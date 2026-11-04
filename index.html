@@ -89,7 +89,7 @@ td.num{color:var(--ink3);text-align:center;width:36px}
   </div>
   <div class="banner hide" id="banner"></div>
   <div class="card sec" id="ccCard">
-    <h3><span>내용 확인 <span style="font-weight:400;font-size:12px;color:var(--ink2)">— 병합 PDF·이름이 애매한 파일을 열어 쪽마다 서류 종류와 차량번호를 확인</span></span>
+    <h3><span>내용 확인 <span style="font-weight:400;font-size:12px;color:var(--ink2)">— 파일을 넣으면 자동으로 PDF·애매한 파일을 열어 쪽마다 서류 종류와 차량번호를 확인합니다</span></span>
       <span style="display:flex;gap:6px"><button class="acc sm" id="btnCheck" disabled>내용 확인</button><button class="sm hide" id="btnCheckStop">중지</button></span></h3>
     <div style="height:6px;background:var(--line2);border-radius:99px;overflow:hidden;margin:6px 0"><i id="ccBar" style="display:block;height:100%;width:0;background:var(--acc);transition:width .3s"></i></div>
     <div style="font-size:12.5px;color:var(--ink2)" id="ccTxt">파일을 넣은 뒤 누르세요. 글자가 있는 PDF는 몇 초면 끝나고, 스캔본만 AI로 판정합니다.</div>
@@ -132,7 +132,7 @@ const TYPES = [
   { id: "id",  label: "신분증",     re: /신분증|주민등록증|주민증|주민|운전면허|면허증|면허|신분|id\s?card/i },
   { id: "reg", label: "등록증",     re: /등록증|등록원부|자동차등록|건설기계등록|차량등록|등록|차량증|자동차증/ },
   { id: "ins", label: "보험",       re: /보험|증권|가입증명|가입확인|공제|insurance/i },
-  { id: "edu", label: "교육이수증", re: /교육|이수|수료|특수형태|특고|기초안전|안전보건/ },
+  { id: "edu", label: "교육이수증", re: /교육|이수|수료|특수형태|특수고용|특고|근로종사자|기초안전|안전보건/ },
 ];
 const REGIONS = "서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주";
 const PL = "가나다라마거너더러머버서어저고노도로모보소오조구누두루무부수우주아바사자배하허호";
@@ -143,6 +143,7 @@ let S = { files: [], edits: {}, ftype: {}, merge: {}, hidden: [], manual: [], se
 let RT = { filter: "all" };
 const RTF = new Map();
 if (!S.content) S.content = {};
+S.files.forEach(f => { f.path = f.path.normalize("NFC"); });
 try { const j = JSON.parse(localStorage.getItem(STORE) || "null"); if (j) S = Object.assign(S, j); } catch(e) {}
 const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch(e) {} };
 
@@ -153,6 +154,7 @@ function plateOf(s){
   return { key: m[2] + m[3] + m[4], text: (m[1] ? m[1].trim() : "") + m[2] + m[3] + m[4] };
 }
 function typesOf(text){
+  text = String(text).normalize("NFC").replace(/[\s_\-.·()\[\]]+/g, "");
   const t = text.replace(/주민등록/g, "주민");
   const out = [];
   if (TYPES[0].re.test(text)) out.push("id");
@@ -199,7 +201,7 @@ const dU = new TextDecoder("utf-8", { fatal: true });
 let dK; try { dK = new TextDecoder("euc-kr"); } catch(e) { dK = new TextDecoder(); }
 const decodeName = b => { const u = b instanceof Uint8Array ? b : new Uint8Array(b); try { return dU.decode(u); } catch(e) { return dK.decode(u); } };
 async function ingest(file, path){
-  path = (path || file.name).replace(/\\/g, "/").replace(/^\/+/, "");
+  path = (path || file.name).normalize("NFC").replace(/\\/g, "/").replace(/^\/+/, "");
   if (SKIP_RE.test(path)) return;
   if (/\.zip$/i.test(file.name)) {
     try {
@@ -208,7 +210,8 @@ async function ingest(file, path){
       const ents = []; zip.forEach((p, e) => { if (!e.dir) ents.push(e); });
       for (const e of ents) {
         if (SKIP_RE.test(e.name)) continue;
-        const inner = e.name.split("/")[0] === baseName ? e.name.slice(baseName.length + 1) : e.name;
+        const en = e.name.normalize("NFC");
+        const inner = en.split("/")[0] === baseName ? en.slice(baseName.length + 1) : en;
         if (/\.zip$/i.test(e.name)) await ingest(new File([await e.async("blob")], e.name.split("/").pop()), base + "/" + inner);
         else { addFile(base + "/" + inner, e._data ? e._data.uncompressedSize : 0); RTF.set(base + "/" + inner, () => e.async("blob")); }
       }
@@ -228,7 +231,8 @@ async function addInputs(list){
   save(); render();
   const n = S.files.length - before;
   const b = $("#banner"); b.classList.remove("hide");
-  b.textContent = n ? `파일 ${n}개를 확인했습니다. 누락이 있는 차량은 빨간 X로 표시됩니다.` : "새로 추가된 파일이 없습니다(이미 넣은 파일).";
+  b.textContent = n ? `파일 ${n}개를 확인했습니다. 이어서 PDF·애매한 파일 내용을 자동으로 확인합니다…` : "새로 추가된 파일이 없습니다(이미 넣은 파일).";
+  if (typeof contentCheck === "function") setTimeout(contentCheck, 50);
 }
 
 // ---------- build ----------
@@ -468,11 +472,11 @@ async function unseal(blob, code){
 const TITLE = [
   ["reg", /자동차등록증|건설기계등록증|등록원부|자동차등록원부/],
   ["ins", /보험증권|가입증명서|공제증권|보험가입증명|보험가입확인|자동차보험|영업용자동차보험|보험기간/],
-  ["edu", /이수증|수료증|교육이수|기초안전보건교육|특수형태근로|안전보건교육|교육수료|이수확인/],
+  ["edu", /이수증|수료증|교육이수|기초안전보건교육|특수형태근로|특수고용|안전보건교육|교육수료|이수확인|교육확인/],
   ["id",  /주민등록증|운전면허증|건설기계조종사면허|조종사면허증/],
 ];
 function classifyText(t){
-  const z = t.replace(/\s+/g, "");
+  const z = t.normalize("NFC").replace(/\s+/g, "");
   return TITLE.filter(([, re]) => re.test(z)).map(([id]) => id);
 }
 const IMG_RE = /\.(jpe?g|png|webp|gif|bmp|jfif)$/i;
@@ -567,7 +571,7 @@ async function contentCheck(){
     save(); render();
     // 2단계: 스캔본만 AI로 종류 판정 (여러 장씩 묶어서)
     if (aiUnits.length && !RT.api) {
-      banner(`글자 있는 PDF ${textPages}쪽은 확인했습니다. 스캔본/사진 ${aiUnits.length}쪽은 AI 키가 없어 건너뛰었습니다 — <a href="ai.html">키 연결하기</a>`);
+      banner(`글자 있는 PDF ${textPages}쪽은 확인했습니다. 스캔본(글자 없는 PDF)·사진 ${aiUnits.length}쪽은 AI 키가 이 PC에 연결되지 않아 건너뛰었습니다 — <a href="ai.html">키 연결하기</a>`);
     } else if (aiUnits.length) {
       const BATCH = 12, batches = [];
       for (let k = 0; k < aiUnits.length; k += BATCH) batches.push(aiUnits.slice(k, k + BATCH));
