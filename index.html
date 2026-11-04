@@ -7,6 +7,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--line:#e3e6eb;--line2:#eef0f3;--ink:#0f172a;--ink2:#475569;--ink3:#94a3b8;--acc:#047857;--accbg:#ecfdf5;--red:#b91c1c;--redbg:#fef2f2;--amb:#a16207;--ambbg:#fefce8;--grybg:#f1f5f9}
 *{box-sizing:border-box}
@@ -66,7 +68,7 @@ td.num{color:var(--ink3);text-align:center;width:36px}
   <header>
     <div>
       <h1>덤프트럭 서류 제출 확인</h1>
-      <div class="sub">폴더·ZIP을 넣으면 파일 이름을 보고 차량별로 신분증·등록증·보험·교육이수증이 있는지 바로 체크합니다.</div>
+      <div class="sub">폴더·ZIP을 넣으면 차량별로 신분증·등록증·보험·교육이수증이 있는지 체크해 엑셀로 만듭니다.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="ghost sm" id="btnReset">처음부터 다시</button>
@@ -76,16 +78,23 @@ td.num{color:var(--ink3);text-align:center;width:36px}
 
   <div class="card drop" id="drop">
     <h2>폴더나 ZIP 파일을 여기로 끌어다 놓으세요</h2>
-    <p>파일 내용은 열지 않고 이름만 봅니다 · 여러 업체를 한꺼번에, 여러 번 나눠 넣어도 됩니다</p>
+    <p>넣는 즉시 파일 이름으로 1차 체크 → 필요하면 아래 ‘내용 확인’으로 병합 PDF·애매한 파일까지 확인 · 여러 업체를 한꺼번에 넣어도 됩니다</p>
     <div class="btns">
       <button class="acc" id="btnFolder">폴더 선택</button>
       <button id="btnFiles">파일·ZIP 선택</button>
     </div>
     <input type="file" id="inFolder" webkitdirectory directory multiple class="hide">
     <input type="file" id="inFiles" multiple class="hide">
-    <div class="kw">인식 단어 — 신분증: 신분증·주민등록증·운전면허·면허 / 등록증: 등록증·등록원부 / 보험: 보험·증권·가입증명 / 교육이수증: 교육·이수</div>
+    <div class="kw">인식 단어 — 신분증: 신분증·주민등록증·운전면허·면허 / 등록증: 등록증·등록원부·차량증 / 보험: 보험·증권·가입증명 / 교육이수증: 교육·이수·수료·특수형태·특고 · 차량번호는 4자리만 적혀 있어도 인식</div>
   </div>
   <div class="banner hide" id="banner"></div>
+  <div class="card sec" id="ccCard">
+    <h3><span>내용 확인 <span style="font-weight:400;font-size:12px;color:var(--ink2)">— 병합 PDF·이름이 애매한 파일을 열어 쪽마다 서류 종류와 차량번호를 확인</span></span>
+      <span style="display:flex;gap:6px"><button class="acc sm" id="btnCheck" disabled>내용 확인</button><button class="sm hide" id="btnCheckStop">중지</button></span></h3>
+    <div style="height:6px;background:var(--line2);border-radius:99px;overflow:hidden;margin:6px 0"><i id="ccBar" style="display:block;height:100%;width:0;background:var(--acc);transition:width .3s"></i></div>
+    <div style="font-size:12.5px;color:var(--ink2)" id="ccTxt">파일을 넣은 뒤 누르세요. 글자가 있는 PDF는 몇 초면 끝나고, 스캔본만 AI로 판정합니다.</div>
+    <div style="font-size:12px;color:var(--ink3);margin-top:4px" id="ccAi"></div>
+  </div>
 
   <div class="stats" id="stats"></div>
 
@@ -110,7 +119,7 @@ td.num{color:var(--ink3);text-align:center;width:36px}
     <div id="umList"></div>
   </div>
 
-  <div class="foot">파일은 이 PC 밖으로 전송되지 않습니다. O/X 칸은 클릭하면 바뀝니다. 결과는 이 브라우저에만 임시 저장됩니다. · 만료일까지 읽어야 하면 <a href="ai.html">AI 판독 버전(느림)</a></div>
+  <div class="foot">이름 확인과 글자 있는 PDF 확인은 이 PC 안에서만 처리됩니다. 스캔본 판정 때만 해당 쪽 이미지가 Google Gemini로 전송됩니다. O/X 칸은 클릭하면 바뀝니다. 결과는 이 브라우저에만 임시 저장됩니다. · 만료일까지 읽어야 하면 <a href="ai.html">AI 판독 버전(느림)</a></div>
 </div>
 
 <script>
@@ -120,10 +129,10 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const STORE = "dumpTruckCheck.v1";
 const TYPES = [
-  { id: "id",  label: "신분증",     re: /신분증|주민등록증|주민증|운전면허|면허증|면허|신분|id\s?card/i },
-  { id: "reg", label: "등록증",     re: /등록증|등록원부|자동차등록|건설기계등록|차량등록|등록/ },
-  { id: "ins", label: "보험",       re: /보험|증권|가입증명|공제|insurance/i },
-  { id: "edu", label: "교육이수증", re: /교육|이수/ },
+  { id: "id",  label: "신분증",     re: /신분증|주민등록증|주민증|주민|운전면허|면허증|면허|신분|id\s?card/i },
+  { id: "reg", label: "등록증",     re: /등록증|등록원부|자동차등록|건설기계등록|차량등록|등록|차량증|자동차증/ },
+  { id: "ins", label: "보험",       re: /보험|증권|가입증명|가입확인|공제|insurance/i },
+  { id: "edu", label: "교육이수증", re: /교육|이수|수료|특수형태|특고|기초안전|안전보건/ },
 ];
 const REGIONS = "서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주";
 const PL = "가나다라마거너더러머버서어저고노도로모보소오조구누두루무부수우주아바사자배하허호";
@@ -132,6 +141,8 @@ const SKIP_RE = /(^|\/)(__MACOSX|\.DS_Store|Thumbs\.db|desktop\.ini)(\/|$)|(^|\/
 
 let S = { files: [], edits: {}, ftype: {}, merge: {}, hidden: [], manual: [], seq: 1 };
 let RT = { filter: "all" };
+const RTF = new Map();
+if (!S.content) S.content = {};
 try { const j = JSON.parse(localStorage.getItem(STORE) || "null"); if (j) S = Object.assign(S, j); } catch(e) {}
 const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch(e) {} };
 
@@ -158,17 +169,29 @@ function analyze(f){
   let pi = -1; for (let i = segs.length - 1; i >= 0; i--) if (plateOf(segs[i])) { pi = i; break; }
   const pFile = plateOf(base);
   const plate = pi >= 0 ? plateOf(segs[pi]) : pFile;
-  // company: dir before plate dir, else last dir that is not a doc-type word and not a plate
+  // 4자리 번호 폴더
+  const shortDir = t => { t = t.trim(); const m = t.match(/^\(?(\d{4})\)?(?:\s*(?:호|호차|번|차량|덤프|트럭))?$/) || t.match(/^(\d{4})[\s_\-]+\D/); return m && !(/^\d{4}$/.test(t) && +m[1] >= 2015 && +m[1] <= 2035) ? m[1] : ""; };
+  let si = -1;
+  if (pi < 0) for (let i = segs.length - 1; i >= 0; i--) if (shortDir(segs[i])) { si = i; break; }
+  // company: dir before plate/4자리 dir, else last dir that is not a doc-type word and not a plate
   let company = "";
-  const lim = pi >= 0 ? pi - 1 : segs.length - 1;
-  for (let i = lim; i >= 0; i--) { if (!isTypeWord(segs[i]) && !plateOf(segs[i])) { company = segs[i]; break; } }
+  const vi = pi >= 0 ? pi : si;
+  const lim = vi >= 0 ? vi - 1 : segs.length - 1;
+  for (let i = lim; i >= 0; i--) { if (!isTypeWord(segs[i]) && !plateOf(segs[i]) && !shortDir(segs[i])) { company = segs[i]; break; } }
   company = company.replace(/\.zip$/i, "").replace(/^\d+[._\-\s]+/, "").trim();
   // classification text: filename + dirs below the vehicle/company folder
-  const extra = segs.slice(pi >= 0 ? pi + 1 : lim + 1).join(" ");
+  const extra = segs.slice(lim + 1).filter(x => !plateOf(x) && !shortDir(x)).join(" ");
   let types = typesOf(base + " " + extra);
   if (S.ftype[f.path]) types = S.ftype[f.path] === "none" ? [] : [S.ftype[f.path]];
-  const key = plate ? "p:" + plate.key : "d:" + segs.join("/");
-  return { ...f, name, plate, company, types, key, folder: segs.join("/") };
+  let key = plate ? "p:" + plate.key : "d:" + segs.join("/");
+  let short = "";
+  if (!plate) {
+    // 차량번호 4자리만: 폴더명이 4자리이거나, 파일명이 4자리로 시작/괄호
+    if (si >= 0) short = shortDir(segs[si]);
+    if (!short) { const m = base.match(/^\(?(\d{4})\)?(?=[\s_\-.(\[가-힣]|$)/) || base.match(/[\s_\-(\[](\d{4})\)?(?=[\s_\-.)\]]|$)/); if (m && !(+m[1] >= 2015 && +m[1] <= 2035)) short = m[1]; }
+    if (short) key = "s:" + company + ":" + short;
+  }
+  return { ...f, name, plate, short, company, types, key, folder: segs.join("/") };
 }
 
 // ---------- ingest ----------
@@ -187,12 +210,13 @@ async function ingest(file, path){
         if (SKIP_RE.test(e.name)) continue;
         const inner = e.name.split("/")[0] === baseName ? e.name.slice(baseName.length + 1) : e.name;
         if (/\.zip$/i.test(e.name)) await ingest(new File([await e.async("blob")], e.name.split("/").pop()), base + "/" + inner);
-        else addFile(base + "/" + inner, e._data ? e._data.uncompressedSize : 0);
+        else { addFile(base + "/" + inner, e._data ? e._data.uncompressedSize : 0); RTF.set(base + "/" + inner, () => e.async("blob")); }
       }
     } catch(e) { addFile(path, file.size, "ZIP을 열 수 없음"); }
     return;
   }
   addFile(path, file.size);
+  RTF.set(path, async () => file);
 }
 function addFile(path, size, err){
   if (S.files.some(f => f.path === path)) return;
@@ -211,8 +235,29 @@ async function addInputs(list){
 let BUILT = { rows: [], unknown: [], analyzed: [] };
 function build(){
   const A = S.files.map(analyze);
-  const groups = new Map();
+  // 4자리 번호 → 같은 업체(없으면 전체)의 전체 번호로 연결
+  const full = {}; // last4 -> Set(key) per company
+  const addFull = (comp, pl) => { const l4 = pl.key.slice(-4); (full[comp + ":" + l4] = full[comp + ":" + l4] || new Set()).add("p:" + pl.key); (full["*:" + l4] = full["*:" + l4] || new Set()).add("p:" + pl.key); };
+  A.forEach(a => { if (a.plate) addFull(a.company, a.plate); });
+  Object.values(S.content).forEach(c => (c.pages || []).forEach(pg => { if (pg.plate) addFull(c.company || "", pg.plate); }));
+  const resolveShort = (comp, d) => { const a = full[comp + ":" + d], b = full["*:" + d]; if (a && a.size === 1) return [...a][0]; if (b && b.size === 1) return [...b][0]; return "s:" + comp + ":" + d; };
+  A.forEach(a => { if (a.short) a.key = resolveShort(a.company, a.short); });
+  // 내용 확인 결과가 있는 파일은 쪽 단위 항목으로 펼침
+  const E = [];
   for (const a of A) {
+    const c = S.content[a.path];
+    const pages = c && (c.pages || []).filter(pg => pg.types && pg.types.length);
+    if (!pages || !pages.length) { E.push(a); continue; }
+    let carry = null;
+    for (const pg of pages) {
+      if (pg.plate) carry = pg.plate;
+      const pl = pg.plate || carry;
+      const key = pl ? "p:" + pl.key : (pg.short ? resolveShort(a.company, pg.short) : a.key);
+      E.push({ ...a, name: a.name + (c.n > 1 ? ` (${pg.p}쪽)` : ""), types: pg.types, plate: pl || a.plate, key, fromContent: true });
+    }
+  }
+  const groups = new Map();
+  for (const a of E) {
     let k = a.key; let hop = 0;
     while (S.merge[k] && hop++ < 5) k = S.merge[k];
     if (!groups.has(k)) groups.set(k, []);
@@ -224,6 +269,7 @@ function build(){
     if (S.hidden.includes(k)) continue;
     if (k.startsWith("d:") && !fs.some(f => f.types.length) && !S.edits[k]) continue;
     const plates = fs.map(f => f.plate && f.plate.text).filter(Boolean).sort((a, b) => b.length - a.length);
+    if (!plates.length && k.startsWith("s:")) plates.push(k.split(":").pop());
     const comps = {}; fs.forEach(f => { if (f.company) comps[f.company] = (comps[f.company] || 0) + 1; });
     const company = Object.keys(comps).sort((a, b) => comps[b] - comps[a])[0] || "";
     const has = {}; TYPES.forEach(t => { has[t.id] = fs.filter(f => f.types.includes(t.id)).map(f => f.name); });
@@ -234,13 +280,14 @@ function build(){
     TYPES.forEach(t => { r[t.id] = has[t.id].length ? "O" : "X"; r[t.id + "_f"] = has[t.id]; });
     const e = S.edits[k] || {};
     Object.assign(r, e);
+    if (k.startsWith("s:") && !e.note) r.note = "차량번호 4자리만 확인됨";
     if (!r.vehicleNo && !e.vehicleNo && r.folder) r.note = r.note || "차량번호 못 찾음 (폴더: " + r.folder.split("/").pop() + ")";
     r.missing = TYPES.filter(t => r[t.id] !== "O").map(t => t.label);
     rows.push(r);
   }
   rows.sort((a, b) => (a.company || "힣").localeCompare(b.company || "힣", "ko") || (a.vehicleNo || "힣").localeCompare(b.vehicleNo || "힣", "ko"));
-  const unknown = A.filter(a => !a.types.length && !S.hidden.includes(a.gkey));
-  BUILT = { rows, unknown, analyzed: A };
+  const unknown = E.filter(a => !a.types.length && !S.hidden.includes(a.gkey));
+  BUILT = { rows, unknown, analyzed: E };
 }
 
 // ---------- render ----------
@@ -259,6 +306,7 @@ function render(){
   sel.innerHTML = `<option value="">전체 업체 (${comps.length})</option>` + comps.map(c => `<option ${c === cur ? "selected" : ""}>${esc(c)}</option>`).join("");
   renderTable(); renderUnknown();
   $("#btnExport").disabled = !rows.length;
+  if (typeof renderCC === "function" && $("#ccAi")) try { renderCC(); } catch(e) {}
 }
 function visible(){
   const q = $("#q").value.replace(/\s/g, "").toLowerCase(), comp = $("#fCompany").value;
@@ -388,6 +436,194 @@ $("#btnExport").onclick = () => {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `덤프트럭_서류제출현황_${ds.replace(/-/g, "")}.xlsx`;
   a.style.display = "none"; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
 };
+
+// ---------- AI key (ai.html과 같은 저장소 공유) ----------
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const CFG_KEY = "dumpTruckList.cfg", CODE_KEY = "dumpTruckList.code";
+const enc = new TextEncoder(), dec = new TextDecoder();
+const lsGet = k => { try { return localStorage.getItem(k); } catch(e) { return null; } };
+const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch(e) {} };
+const ub64u = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+async function unseal(blob, code){
+  const all = ub64u(blob);
+  const base = await crypto.subtle.importKey("raw", enc.encode(code), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: all.slice(0, 16), iterations: 200000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  return JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(16, 28) }, key, all.slice(28))));
+}
+(function readHash(){
+  const m = location.hash.match(/^#c=([A-Za-z0-9_-]+)(?:&p=([A-Za-z0-9_-]+))?/);
+  if (!m) return;
+  lsSet(CFG_KEY, m[1]);
+  let code = null; if (m[2]) { try { code = dec.decode(ub64u(m[2])); } catch(e) {} }
+  lsSet(CODE_KEY, code);
+  history.replaceState(null, "", location.pathname + location.search);
+})();
+(async () => {
+  const blob = lsGet(CFG_KEY), code = lsGet(CODE_KEY);
+  if (blob && code) { try { const c = await unseal(blob, code); RT.api = { key: c.k, model: c.m || "gemini-flash-latest", rpm: +c.r || 5 }; } catch(e) {} }
+  renderCC();
+})();
+
+// ---------- 내용 확인 ----------
+const TITLE = [
+  ["reg", /자동차등록증|건설기계등록증|등록원부|자동차등록원부/],
+  ["ins", /보험증권|가입증명서|공제증권|보험가입증명|보험가입확인|자동차보험|영업용자동차보험|보험기간/],
+  ["edu", /이수증|수료증|교육이수|기초안전보건교육|특수형태근로|안전보건교육|교육수료|이수확인/],
+  ["id",  /주민등록증|운전면허증|건설기계조종사면허|조종사면허증/],
+];
+function classifyText(t){
+  const z = t.replace(/\s+/g, "");
+  return TITLE.filter(([, re]) => re.test(z)).map(([id]) => id);
+}
+const IMG_RE = /\.(jpe?g|png|webp|gif|bmp|jfif)$/i;
+const sleep = (ms, sig) => new Promise((res, rej) => { const t = setTimeout(res, ms); if (sig) sig.addEventListener("abort", () => { clearTimeout(t); rej({ code: "cancelled" }); }, { once: true }); });
+async function toJpeg(src, max){
+  let bmp = src;
+  if (!(src instanceof HTMLCanvasElement)) {
+    try { bmp = await createImageBitmap(src); }
+    catch(e) { bmp = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(src); }); }
+  }
+  const sc = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas"); c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise(r => c.toBlob(r, "image/jpeg", 0.75));
+}
+const b64 = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(b); });
+let lastCall = 0;
+async function gemini(prompt, blobs, sig){
+  const gap = 60000 / Math.max(1, RT.api.rpm) + 200;
+  const parts = [{ text: prompt }];
+  for (const b of blobs) parts.push({ inline_data: { mime_type: "image/jpeg", data: await b64(b) } });
+  const body = JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: { temperature: 0, responseMimeType: "application/json" } });
+  for (let at = 0; at < 4; at++) {
+    const w = lastCall + gap - Date.now(); if (w > 0) await sleep(w, sig);
+    lastCall = Date.now();
+    let r;
+    try { r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(RT.api.model)}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": RT.api.key }, body, signal: sig }); }
+    catch(e) { if (sig && sig.aborted) throw { code: "cancelled" }; if (at < 2) { await sleep(3000, sig); continue; } throw { code: "network" }; }
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) {
+      const txt = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || "").join("");
+      try { return JSON.parse(txt); } catch(e) { const m = txt.match(/\[[\s\S]*\]/); if (m) return JSON.parse(m[0]); throw { code: "invalid_json" }; }
+    }
+    const msg = (j.error && j.error.message) || "";
+    if (r.status === 429) { if (/day/i.test(msg) || at === 3) throw { code: "rate_limited", daily: /day/i.test(msg) }; const d = (j.error.details || []).find(x => x.retryDelay); await sleep(Math.min(60, d ? parseFloat(d.retryDelay) || 20 : 20) * 1000, sig); continue; }
+    if (r.status >= 500) { await sleep(4000 * (at + 1), sig); continue; }
+    if (r.status === 404 && RT.api.model !== "gemini-flash-latest") { RT.api.model = "gemini-flash-latest"; at--; continue; }
+    throw { code: r.status === 400 || r.status === 403 ? "bad_key" : "http", message: msg };
+  }
+  throw { code: "upstream" };
+}
+const AI_LABEL = { "신분증": "id", "등록증": "reg", "보험": "ins", "교육이수증": "edu", "교육": "edu" };
+const AI_PROMPT = n => `아래 이미지 ${n}장은 한국 건설현장 덤프트럭 협력업체가 낸 서류의 각 페이지다. 각 이미지가 어떤 서류인지와 보이는 차량번호만 판정해 JSON 배열로만 답하라.
+형식: [{"i":1,"types":["등록증"],"plate":"12가3456","digits4":""}]
+- types 값: "신분증"(주민등록증·운전면허증·건설기계조종사면허증), "등록증"(자동차등록증·건설기계등록증·등록원부), "보험"(보험증권·가입증명서·공제증권), "교육이수증"(기초안전보건교육·특수형태근로종사자 교육 등 이수증·수료증). 한 이미지에 여러 서류면 모두, 해당 없으면 [].
+- plate: 이미지에 적힌 차량번호(예: 서울12가3456, 12가3456). 없으면 "". 번호 4자리만 보이면 digits4에.
+- 개인정보(주민번호·주소 등)는 적지 마라. JSON 외 다른 말 금지.`;
+
+function renderCC(){
+  const ai = !!RT.api;
+  $("#ccAi").innerHTML = ai ? `스캔본 판독 AI 연결됨 (분당 ${RT.api.rpm}회)` : `스캔본(사진·스캔 PDF) 판독용 AI 키가 이 PC에 없습니다 — 글자가 들어있는 PDF만 확인합니다. <a href="ai.html">키 연결하기</a>`;
+  const cand = S.files.filter(f => RTF.has(f.path) && !S.content[f.path] && (/\.pdf$/i.test(f.path) || IMG_RE.test(f.path))).length;
+  $("#btnCheck").disabled = RT.checking || !cand;
+  $("#btnCheck").textContent = cand ? `내용 확인 (${cand}개 파일)` : "내용 확인";
+  $("#btnCheckStop").classList.toggle("hide", !RT.checking);
+}
+function ccProg(done, total, txt){ $("#ccBar").style.width = total ? (done / total * 100) + "%" : "0"; $("#ccTxt").textContent = txt; }
+
+async function contentCheck(){
+  if (RT.checking) return;
+  RT.checking = true; RT.ccCtl = new AbortController(); renderCC();
+  const sig = RT.ccCtl.signal;
+  const A = S.files.map(analyze);
+  const targets = A.filter(a => RTF.has(a.path) && !S.content[a.path] && (/\.pdf$/i.test(a.path) || IMG_RE.test(a.path)));
+  const aiUnits = []; let i = 0, textPages = 0;
+  try {
+    // 1단계: PDF 글자 읽기 (AI 없이, 빠름)
+    for (const a of targets) {
+      if (sig.aborted) throw { code: "cancelled" };
+      ccProg(++i, targets.length, `1단계 · PDF 글자 읽는 중 ${i}/${targets.length}`);
+      if (IMG_RE.test(a.path)) {
+        if (a.types.length !== 1) aiUnits.push({ a, p: 1, n: 1 });
+        else S.content[a.path] = { n: 1, company: a.company, pages: [] };
+        continue;
+      }
+      let pdf;
+      try { pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await (await RTF.get(a.path)()).arrayBuffer()) }).promise; }
+      catch(e) { S.content[a.path] = { n: 0, company: a.company, pages: [], err: "PDF 열기 실패" }; continue; }
+      const rec = { n: pdf.numPages, company: a.company, pages: [] };
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const tc = await (await pdf.getPage(p)).getTextContent();
+        const t = tc.items.map(x => x.str).join(" ");
+        if (t.replace(/\s/g, "").length > 8) {
+          textPages++;
+          const pl = plateOf(t);
+          rec.pages.push({ p, types: classifyText(t), plate: pl, src: "text" });
+        } else if (pdf.numPages > 1 || a.types.length !== 1) aiUnits.push({ a, p, n: pdf.numPages, pdf });
+      }
+      S.content[a.path] = rec;
+      if (i % 5 === 0) { save(); render(); }
+    }
+    save(); render();
+    // 2단계: 스캔본만 AI로 종류 판정 (여러 장씩 묶어서)
+    if (aiUnits.length && !RT.api) {
+      banner(`글자 있는 PDF ${textPages}쪽은 확인했습니다. 스캔본/사진 ${aiUnits.length}쪽은 AI 키가 없어 건너뛰었습니다 — <a href="ai.html">키 연결하기</a>`);
+    } else if (aiUnits.length) {
+      const BATCH = 12, batches = [];
+      for (let k = 0; k < aiUnits.length; k += BATCH) batches.push(aiUnits.slice(k, k + BATCH));
+      const par = RT.api.rpm >= 30 ? 4 : 1; let done = 0, next = 0;
+      const t0 = Date.now();
+      const work = async () => {
+        while (next < batches.length) {
+          if (sig.aborted) throw { code: "cancelled" };
+          const b = batches[next++];
+          const imgs = [];
+          for (const u of b) {
+            try {
+              if (u.pdf) {
+                const page = await u.pdf.getPage(u.p); const v1 = page.getViewport({ scale: 1 });
+                const vp = page.getViewport({ scale: Math.min(2, 1000 / Math.max(v1.width, v1.height)) });
+                const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+                const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+                await page.render({ canvasContext: g, viewport: vp }).promise;
+                imgs.push(await toJpeg(c, 1000));
+              } else imgs.push(await toJpeg(await RTF.get(u.a.path)(), 1000));
+            } catch(e) { imgs.push(null); }
+          }
+          const ok = b.filter((u, k) => imgs[k]), okImgs = imgs.filter(Boolean);
+          let res = [];
+          if (okImgs.length) res = await gemini(AI_PROMPT(okImgs.length), okImgs, sig);
+          (Array.isArray(res) ? res : []).forEach(r => {
+            const u = ok[(parseInt(r.i, 10) || 0) - 1]; if (!u) return;
+            const types = [...new Set((r.types || []).map(x => AI_LABEL[String(x).trim()]).filter(Boolean))];
+            const pl = plateOf(String(r.plate || ""));
+            const rec = S.content[u.a.path] = S.content[u.a.path] || { n: u.n, company: u.a.company, pages: [] };
+            rec.pages = rec.pages.filter(x => x.p !== u.p);
+            rec.pages.push({ p: u.p, types, plate: pl, short: !pl && /^\d{4}$/.test(String(r.digits4 || "")) ? String(r.digits4) : "", src: "ai" });
+            rec.pages.sort((x, y) => x.p - y.p);
+          });
+          done += b.length;
+          const left = batches.length - next, eta = left ? Math.ceil(left / (par > 1 ? par : 1) * Math.max((Date.now() - t0) / Math.max(1, next), 60000 / RT.api.rpm) / 1000) : 0;
+          ccProg(done, aiUnits.length, `2단계 · 스캔본 종류 판정 ${done}/${aiUnits.length}쪽${eta ? ` · 약 ${eta > 90 ? Math.ceil(eta / 60) + "분" : eta + "초"} 남음` : ""}`);
+          save(); render();
+        }
+      };
+      ccProg(0, aiUnits.length, `2단계 · 스캔본 ${aiUnits.length}쪽을 ${batches.length}번에 나눠 판정합니다`);
+      await Promise.all(Array.from({ length: Math.min(par, batches.length) }, work));
+    }
+    ccProg(1, 1, `완료 · 글자 PDF ${textPages}쪽 + 스캔본 ${RT.api ? aiUnits.length : 0}쪽 확인`);
+    banner("내용 확인을 마쳤습니다. 병합 PDF는 쪽마다 서류 종류를 나눠 반영했습니다.");
+  } catch(e) {
+    if (e && e.code === "cancelled") ccProg(0, 1, "중지했습니다. 다시 누르면 남은 것부터 이어서 확인합니다.");
+    else if (e && e.code === "rate_limited") ccProg(0, 1, e.daily ? "오늘 무료 AI 한도를 다 썼습니다. 내일 다시 누르면 이어서 확인합니다." : "AI 요청이 몰려 멈췄습니다. 1~2분 뒤 다시 눌러주세요.");
+    else if (e && e.code === "bad_key") ccProg(0, 1, "AI 키가 잘못되었습니다. ai.html 관리자 설정에서 다시 연결해주세요.");
+    else if (e && e.code === "network") ccProg(0, 1, "Google AI 서버에 연결할 수 없습니다. 잠시 후 다시 눌러주세요.");
+    else { console.error(e); ccProg(0, 1, "확인 중 오류가 났습니다. 다시 눌러주세요."); }
+  } finally { RT.checking = false; save(); render(); renderCC(); }
+}
+function banner(html){ const b = $("#banner"); b.classList.remove("hide"); b.innerHTML = html; }
+$("#btnCheck").onclick = contentCheck;
+$("#btnCheckStop").onclick = () => RT.ccCtl && RT.ccCtl.abort();
 
 render();
 })();
