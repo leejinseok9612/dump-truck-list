@@ -144,7 +144,7 @@ select{font:inherit;font-size:12.5px;padding:5px 6px;border:1px solid var(--line
     <h3><span>관리자 설정</span><button class="sm ghost" id="btnAdminClose">닫기</button></h3>
     <div class="muted small" style="margin-bottom:8px">키는 접속 코드로 암호화되어 링크 안에만 들어갑니다. 서버나 GitHub에는 저장되지 않습니다.</div>
     <label>Gemini API 키 <input type="password" id="admKey" placeholder="AIza…" autocomplete="off" style="width:260px"></label>
-    <label>모델 <span style="display:flex;gap:6px"><input id="admModel" list="modelList" value="gemini-2.5-flash" style="width:200px"><button class="sm" id="btnModels">모델 목록 불러오기</button></span></label>
+    <label>모델 <span style="display:flex;gap:6px"><input id="admModel" list="modelList" value="gemini-flash-latest" style="width:200px"><button class="sm" id="btnModels">모델 목록 불러오기</button></span></label>
     <datalist id="modelList"></datalist>
     <label>분당 요청 수 <input type="number" id="admRpm" value="5" min="1" max="1000"></label>
     <label>접속 코드 (4자 이상) <input type="text" id="admCode" autocomplete="off"></label>
@@ -284,7 +284,7 @@ async function tryUnlock(code, remember){
   if (!blob) return false;
   try {
     const c = await unseal(blob, code);
-    RT.api = { key: c.k, model: c.m || "gemini-2.5-flash", rpm: +c.r || 5 };
+    RT.api = { key: c.k, model: c.m || "gemini-flash-latest", rpm: +c.r || 5 };
     RT.sample = true;
     if (remember) lsSet(CODE_KEY, code);
     renderGate(); renderProgress();
@@ -519,6 +519,7 @@ async function gemini(prompt, blobs, signal){
     if (r.status === 503 || r.status === 500) { await sleep(5000 * (attempt + 1), signal); continue; }
     if (r.status === 400 && /API key/i.test(msg)) throw { code: "bad_key" };
     if (r.status === 403) throw { code: "bad_key" };
+    if (r.status === 404 && RT.api.model !== "gemini-flash-latest") { RT.api.model = "gemini-flash-latest"; lastCall = 0; return gemini(prompt, blobs, signal); }
     if (r.status === 404) throw { code: "bad_model" };
     throw { code: "http", message: msg };
   }
@@ -995,7 +996,7 @@ $("#btnModels").onclick = async () => {
   try {
     const ms = (await listModels(key)).filter(n => /gemini/i.test(n) && !/embed|tts|image|audio|live/i.test(n));
     $("#modelList").innerHTML = ms.map(n => `<option value="${esc(n)}">`).join("");
-    admMsg(`모델 ${ms.length}개 확인됨 — 모델 칸을 클릭하면 고를 수 있어요. (flash 계열 추천)`, true);
+    admMsg(`모델 ${ms.length}개 확인됨 — 그대로 gemini-flash-latest 를 쓰면 항상 최신 Flash로 연결됩니다.`, true);
   } catch(e) { admMsg("키 확인 실패: " + e.message); }
 };
 $("#btnTest").onclick = async () => {
@@ -1005,10 +1006,10 @@ $("#btnTest").onclick = async () => {
   const saved = RT.api; RT.api = { key, model, rpm: 1000 };
   try { const r = await gemini('JSON으로만 답하라: {"ok":true}', [], null); const ok = r && (r.ok || (Array.isArray(r) && r[0] && r[0].ok)); admMsg(ok ? `정상 동작합니다 (${model}).` : "응답은 왔지만 형식이 이상합니다.", !!ok); }
   catch(e) { admMsg(e.code === "bad_key" ? "키가 잘못되었습니다." : e.code === "bad_model" ? "모델 이름을 찾을 수 없습니다. ‘모델 목록 불러오기’를 눌러보세요." : e.code === "network" ? "Google 서버에 연결할 수 없습니다." : e.code === "rate_limited" ? "요청 한도 초과 — 잠시 후 다시." : "오류: " + (e.message || e.code)); }
-  finally { RT.api = saved; lastCall = 0; }
+  finally { if (RT.api && RT.api.model !== model) $("#admModel").value = RT.api.model; RT.api = saved; lastCall = 0; }
 };
 $("#btnMake").onclick = async () => {
-  const key = $("#admKey").value.trim(), model = $("#admModel").value.trim() || "gemini-2.5-flash", rpm = +$("#admRpm").value || 5, code = $("#admCode").value.trim();
+  const key = $("#admKey").value.trim(), model = $("#admModel").value.trim() || "gemini-flash-latest", rpm = +$("#admRpm").value || 5, code = $("#admCode").value.trim();
   if (!key) return admMsg("API 키를 넣어주세요.");
   if (code.length < 4) return admMsg("접속 코드는 4자 이상으로 정해주세요.");
   const blob = await seal({ k: key, m: model, r: rpm }, code);
