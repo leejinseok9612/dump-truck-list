@@ -93,7 +93,7 @@ td.num{color:var(--ink3);text-align:center;width:36px}
       <span style="display:flex;gap:6px"><button class="acc sm" id="btnCheck" disabled>내용 확인</button><button class="sm hide" id="btnCheckStop">중지</button></span></h3>
     <div style="height:6px;background:var(--line2);border-radius:99px;overflow:hidden;margin:6px 0"><i id="ccBar" style="display:block;height:100%;width:0;background:var(--acc);transition:width .3s"></i></div>
     <div style="font-size:12.5px;color:var(--ink2)" id="ccTxt">파일을 넣은 뒤 누르세요. 글자가 있는 PDF는 몇 초면 끝나고, 스캔본만 AI로 판정합니다.</div>
-    <div style="font-size:12px;color:var(--ink3);margin-top:4px" id="ccAi"></div>
+    <div style="font-size:12px;color:var(--ink3);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span id="ccAi"></span><label id="useAiWrap" class="hide" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="useAi"> 스캔본에 AI 사용 (무료 키는 하루 한도가 매우 적음)</label></div>
   </div>
 
   <div class="stats" id="stats"></div>
@@ -546,7 +546,7 @@ function classifyOcr(z){
   if (/이수증|수료증|교육|이수|기초안전|특수형태/.test(y)) out.push("edu");
   return out;
 }
-function errText(e){ if (!e) return ""; return e.code === "network" ? "Google 서버 연결 안 됨" : e.code === "bad_key" ? "키 오류" : (e.message || e.code || "").slice(0, 80); }
+function errText(e){ if (!e) return ""; if (e.code === "rate_limited") return "무료 한도 초과"; return e.code === "network" ? "Google 서버 연결 안 됨" : e.code === "bad_key" ? "키 오류" : (e.message || e.code || "").slice(0, 80); }
 let OCR = null;
 function loadScript(src){ return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("load " + src)); document.head.appendChild(s); }); }
 async function getOcr(n){
@@ -560,7 +560,8 @@ async function getOcr(n){
 
 function renderCC(){
   const ai = !!RT.api;
-  $("#ccAi").innerHTML = ai ? `스캔본 판독 AI 연결됨 (분당 ${RT.api.rpm}회)` : `스캔본은 PC 안 글자인식(OCR)으로 확인합니다. AI 키를 연결하면 더 정확합니다 — <a href="ai.html">키 연결하기</a>`;
+  $("#ccAi").textContent = "스캔본·사진은 PC 안 글자인식(OCR)으로 확인합니다. 무료·횟수 제한 없음.";
+  $("#useAiWrap").classList.toggle("hide", !ai);
   const cand = S.files.filter(f => RTF.has(f.path) && !S.content[f.path] && (/\.pdf$/i.test(f.path) || IMG_RE.test(f.path))).length;
   $("#btnCheck").disabled = RT.checking || !cand;
   $("#btnCheck").textContent = cand ? `내용 확인 (${cand}개 파일)` : "내용 확인";
@@ -614,7 +615,7 @@ async function contentCheck(){
         rec.pages.sort((x, y) => x.p - y.p);
       };
       // AI 경로
-      if (RT.api && !RT.aiDown) {
+      if (RT.api && !RT.aiDown && $("#useAi").checked) {
         const BATCH = 6, par = RT.api.rpm >= 30 ? 4 : 1;
         const aiWork = async () => {
           while (queue.length && !RT.aiDown) {
@@ -626,7 +627,7 @@ async function contentCheck(){
             let res;
             try { res = await gemini(AI_PROMPT(ok.length), imgs.filter(Boolean), sig); }
             catch(e) {
-              if (e && (e.code === "cancelled" || e.code === "rate_limited")) { queue.unshift(...b); throw e; }
+              if (e && e.code === "cancelled") { queue.unshift(...b); throw e; }
               RT.aiDown = true; RT.aiErr = e; queue.unshift(...b); return;
             }
             (Array.isArray(res) ? res : []).forEach(r => {
@@ -641,7 +642,7 @@ async function contentCheck(){
       }
       // OCR 경로 (AI 없음 또는 AI 실패 시)
       if (queue.length) {
-        const why = RT.aiDown ? `AI 연결 실패(${esc(errText(RT.aiErr))}) → PC 안 글자인식으로 전환` : "PC 안 글자인식";
+        const why = RT.aiDown ? `AI 사용 불가(${esc(errText(RT.aiErr))}) → PC 안 글자인식으로 전환` : "PC 안 글자인식";
         ccProg(done, total, `2단계 · ${why} 준비 중… (처음 한 번 한글 데이터 1.5MB 내려받음)`);
         const sched = await getOcr(2);
         const ocrWork = async () => {
