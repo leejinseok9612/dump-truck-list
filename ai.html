@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>덤프트럭 차량리스트 자동 정리</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<style>
+:root{
+  --bg:#f6f7f9;--card:#fff;--line:#e3e6eb;--line2:#eef0f3;--ink:#0f172a;--ink2:#475569;--ink3:#94a3b8;
+  --acc:#047857;--acc2:#065f46;--accbg:#ecfdf5;
+  --red:#b91c1c;--redbg:#fef2f2;--amb:#a16207;--ambbg:#fefce8;--gry:#64748b;--grybg:#f1f5f9;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo",sans-serif;font-size:14px;line-height:1.5}
+.wrap{max-width:1320px;margin:0 auto;padding:24px 20px 80px}
+header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.3px}
+.sub{color:var(--ink2);margin-top:4px;font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px}
+.drop{padding:28px;text-align:center;border:1.5px dashed #cbd5e1;border-radius:12px;background:#fbfcfd;transition:.15s}
+.drop.over{border-color:var(--acc);background:var(--accbg)}
+.drop h2{font-size:16px;margin:0 0 6px}
+.drop p{margin:0;color:var(--ink2);font-size:13px}
+.btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+button{font:inherit;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);padding:8px 14px;cursor:pointer;font-weight:500}
+button:hover{border-color:#cbd5e1;background:#f8fafc}
+button.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+button.pri:hover{background:#1e293b}
+button.acc{background:var(--acc);border-color:var(--acc);color:#fff}
+button.acc:hover{background:var(--acc2)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.sm{padding:4px 10px;font-size:12px}
+button.ghost{border-color:transparent;background:transparent;color:var(--ink2)}
+.grid2{display:grid;grid-template-columns:1fr 340px;gap:16px;margin-top:16px}
+@media(max-width:980px){.grid2{grid-template-columns:1fr}}
+.sec{padding:16px 18px}
+.sec h3{margin:0 0 10px;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.muted{color:var(--ink2)}.small{font-size:12px}
+.bar{height:6px;background:var(--line2);border-radius:99px;overflow:hidden;margin:10px 0 6px}
+.bar>i{display:block;height:100%;background:var(--acc);width:0;transition:width .3s}
+.banner{padding:10px 14px;border-radius:10px;margin-top:12px;font-size:13px;display:none}
+.banner.show{display:block}
+.banner.warn{background:var(--ambbg);color:#713f12;border:1px solid #fde68a}
+.banner.err{background:var(--redbg);color:#7f1d1d;border:1px solid #fecaca}
+.banner.ok{background:var(--accbg);color:#064e3b;border:1px solid #a7f3d0}
+.files{max-height:320px;overflow:auto;border-top:1px solid var(--line2);margin-top:8px}
+.frow{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line2);font-size:12.5px}
+.frow .p{flex:1;word-break:break-all;color:var(--ink)}
+.frow .s{white-space:nowrap;font-size:11.5px}
+.dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:none;background:var(--ink3)}
+.dot.ok{background:var(--acc)}.dot.fail{background:var(--red)}.dot.run{background:#2563eb;animation:pl 1s infinite}.dot.skip{background:#cbd5e1}
+@keyframes pl{50%{opacity:.3}}
+.settings label{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 0;font-size:13px}
+.settings input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;width:150px}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 10px}
+.stat{padding:10px 14px;min-width:110px;cursor:pointer}
+.stat b{display:block;font-size:20px;font-weight:700}
+.stat span{font-size:12px;color:var(--ink2)}
+.stat.on{outline:2px solid var(--ink)}
+.stat.r b{color:var(--red)}.stat.a b{color:var(--amb)}.stat.g b{color:var(--gry)}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+.tools input[type=search]{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:220px;flex:1;max-width:340px}
+.tbl-wrap{overflow:auto;max-height:70vh}
+table{border-collapse:separate;border-spacing:0;width:100%;min-width:1180px;font-size:13px}
+th{position:sticky;top:0;background:#f8fafc;z-index:1;text-align:left;font-weight:600;color:var(--ink2);font-size:12px;padding:8px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:4px 6px;border-bottom:1px solid var(--line2);vertical-align:middle}
+tr:hover td{background:#fafbfc}
+td input{font:inherit;font-size:13px;border:1px solid transparent;background:transparent;border-radius:6px;padding:5px 6px;width:100%;color:var(--ink)}
+td input:hover{border-color:var(--line)}
+td input:focus{outline:none;border-color:var(--acc);background:#fff}
+td input[type=date]{min-width:128px}
+td.num{color:var(--ink3);width:36px;text-align:center}
+td.vno input{font-weight:700;min-width:130px}
+td input:not([type=date]){min-width:96px}
+td.wide input{min-width:120px}
+.dd{font-size:11px;display:block;padding-left:7px;margin-top:-2px}
+.c-exp{background:var(--redbg)!important}.c-exp .dd{color:var(--red);font-weight:600}
+.c-warn{background:var(--ambbg)!important}.c-warn .dd{color:var(--amb);font-weight:600}
+.c-miss{background:var(--grybg)!important}.c-miss .dd{color:var(--gry)}
+.chip{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:99px;margin:1px 2px 1px 0;white-space:nowrap;font-weight:500}
+.chip.r{background:var(--redbg);color:var(--red)}.chip.a{background:var(--ambbg);color:var(--amb)}.chip.g{background:var(--grybg);color:var(--gry)}.chip.ok{background:var(--accbg);color:var(--acc)}
+.src{font-size:11px;color:var(--ink3);max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help}
+select{font:inherit;font-size:12.5px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:#fff;max-width:200px}
+.reg{text-align:center;font-weight:700}
+.reg.o{color:var(--acc)}.reg.x{color:var(--red)}
+.empty{padding:40px;text-align:center;color:var(--ink3)}
+.um-row{display:grid;grid-template-columns:1fr auto;gap:8px;padding:8px 0;border-bottom:1px solid var(--line2);font-size:12.5px;align-items:center}
+.hide{display:none!important}
+.overlay{position:fixed;inset:0;background:rgba(4,120,87,.08);border:3px dashed var(--acc);z-index:50;display:none;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--acc2);pointer-events:none}
+.overlay.show{display:flex}
+.foot{margin-top:18px;color:var(--ink3);font-size:12px}
+</style>
+</head>
+<body>
+<div class="overlay" id="overlay">여기에 놓으면 추가됩니다</div>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>덤프트럭 차량리스트 자동 정리</h1>
+      <div class="sub">업체가 낸 폴더·ZIP·PDF·사진을 넣으면 차량번호별로 등록증·검사·보험·교육 만료일을 모아 엑셀로 만듭니다.</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button id="btnReset" class="ghost sm">처음부터 다시</button>
+      <button id="btnExport" class="pri" disabled>엑셀 다운로드</button>
+    </div>
+  </header>
+
+  <div class="card drop" id="drop">
+    <h2>폴더나 ZIP 파일을 여기로 끌어다 놓으세요</h2>
+    <p>업체별 폴더째로 넣어도 되고, 여러 번 나눠 넣어도 됩니다 · 지원: ZIP, PDF, JPG/PNG/WEBP, 엑셀(xlsx/xls/csv), 워드(docx)</p>
+    <div class="btns">
+      <button class="acc" id="btnFolder">폴더 선택</button>
+      <button id="btnFiles">파일·ZIP 선택</button>
+    </div>
+    <input type="file" id="inFolder" webkitdirectory directory multiple class="hide">
+    <input type="file" id="inFiles" multiple class="hide" accept=".zip,.pdf,.jpg,.jpeg,.png,.webp,.gif,.bmp,.heic,.heif,.xlsx,.xls,.csv,.docx">
+  </div>
+
+
+  <div class="card sec" id="gate" style="margin-top:16px">
+    <div id="gateLock" class="hide">
+      <h3>접속 코드 입력</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="password" id="codeIn" placeholder="현장 접속 코드" autocomplete="off" style="font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;min-width:200px">
+        <label class="small muted" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="codeRem" checked> 이 PC에서 기억</label>
+        <button class="acc" id="btnUnlock">확인</button>
+        <span class="small" id="codeMsg" style="color:var(--red)"></span>
+      </div>
+    </div>
+    <div id="gateNone" class="hide">
+      <h3>판독 엔진이 설정되지 않았습니다</h3>
+      <div class="muted small">관리자에게 받은 <b>공유 링크</b>로 다시 열어주세요. 관리자라면 아래 ‘관리자 설정’에서 Gemini API 키를 등록하세요.</div>
+    </div>
+  </div>
+  <div class="small muted" style="margin-top:8px;display:flex;gap:10px;align-items:center"><span id="apiState"></span><button class="sm ghost hide" id="btnLock">잠그기</button></div>
+
+  <div class="card sec hide settings" id="admin" style="margin-top:16px">
+    <h3><span>관리자 설정</span><button class="sm ghost" id="btnAdminClose">닫기</button></h3>
+    <div class="muted small" style="margin-bottom:8px">키는 접속 코드로 암호화되어 링크 안에만 들어갑니다. 서버나 GitHub에는 저장되지 않습니다.</div>
+    <label>Gemini API 키 <input type="password" id="admKey" placeholder="AIza…" autocomplete="off" style="width:260px"></label>
+    <label>모델 <span style="display:flex;gap:6px"><input id="admModel" list="modelList" value="gemini-flash-latest" style="width:200px"><button class="sm" id="btnModels">모델 목록 불러오기</button></span></label>
+    <datalist id="modelList"></datalist>
+    <label>분당 요청 수 <input type="number" id="admRpm" value="5" min="1" max="1000"></label>
+    <label>접속 코드 (4자 이상) <input type="text" id="admCode" autocomplete="off"></label>
+    <label style="justify-content:flex-start"><input type="checkbox" id="admEmbed" checked style="width:auto"> 링크에 접속 코드 포함 (받는 사람은 코드 입력 없이 바로 사용)</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="pri" id="btnTest">키 테스트</button><button class="acc" id="btnMake">공유 링크 만들기</button></div>
+    <div class="small" id="admMsg" style="margin-top:8px"></div>
+    <textarea id="admLink" class="hide" readonly style="width:100%;margin-top:8px;font:12px monospace;height:70px;border:1px solid var(--line);border-radius:8px;padding:8px"></textarea>
+    <button class="sm hide" id="btnCopy" style="margin-top:6px">링크 복사</button>
+  </div>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="grid2">
+    <div class="card sec">
+      <h3><span>분석 진행</span><span class="muted small" id="progTxt">파일을 넣어주세요</span></h3>
+      <div class="bar"><i id="progBar"></i></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button class="acc" id="btnRun" disabled>분석 시작</button>
+        <button id="btnStop" class="hide">일시 정지</button>
+        <button id="btnRetry" class="hide">실패한 것 다시 분석</button>
+      </div>
+      <div class="muted small" id="estTxt" style="margin-top:8px"></div>
+      <div class="files" id="fileList"></div>
+    </div>
+    <div class="card sec settings">
+      <h3>설정</h3>
+      <label>만료 기준일 <input type="date" id="baseDate"></label>
+      <label>임박 표시 (일 이내) <input type="number" id="warnDays" min="1" max="180" value="30"></label>
+      <label>교육 유효기간 (개월)<input type="number" id="trainMonths" min="0" max="120" placeholder="서류에 적힌 날짜만"></label>
+      <div class="muted small">교육 이수증에 만료일이 없으면, 여기 개월 수를 넣었을 때만 이수일 기준으로 만료일을 계산합니다.</div>
+    </div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="card" id="tableCard">
+    <div class="tools">
+      <input type="search" id="q" placeholder="차량번호·업체·운전원 검색">
+      <select id="fCompany"><option value="">전체 업체</option></select>
+      <span style="flex:1"></span>
+      <button class="sm" id="btnAdd">+ 차량 직접 추가</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>No</th><th>업체</th><th>차량번호</th><th>차종</th><th>소유자</th><th>운전원</th><th>등록증</th>
+          <th>검사 만료</th><th>보험 만료</th><th>교육 만료</th><th>상태</th><th>비고</th><th>근거 파일</th><th></th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="empty" id="empty">아직 정리된 차량이 없습니다.</div>
+    </div>
+  </div>
+
+  <div class="card sec" id="umCard" style="margin-top:16px">
+    <h3><span>차량번호를 못 찾은 서류</span><span class="muted small">차량을 골라주면 그 차량에 합쳐집니다</span></h3>
+    <div id="umList"></div>
+  </div>
+
+  <div class="foot">서류 이미지는 판독을 위해 Google Gemini로 전송됩니다. 주민등록번호·주소·전화번호는 추출하지 않습니다. 판독 결과는 이 PC 브라우저에만 임시 저장됩니다. · <a href="#" id="lnkAdmin" style="color:inherit">관리자 설정</a></div>
+</div>
+
+<script>
+(() => {
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const STORE = "dumpTruckList.v1";
+const REG_TYPES = ["자동차등록증", "건설기계등록증"];
+const todayStr = () => { const d = new Date(); return ymd(d); };
+function ymd(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+// ---------- state ----------
+const S = {
+  files: [],       // {id,path,name,size,kind,status,msg,pages}
+  units: [],       // {id,fileId,kind:'image'|'text',page,text,status,err}
+  docs: [],        // extracted documents
+  edits: {},       // key -> {field:value}
+  assign: {},      // docId -> key
+  hidden: [],      // keys
+  manual: [],      // keys
+  settings: { baseDate: todayStr(), warnDays: 30, trainMonths: "" },
+  seq: 1,
+};
+const RT = { fileObj: new Map(), pdf: new Map(), running: false, paused: false, stop: false, ctl: new Set(), sample: null, api: null, batch: 4, filter: "all" };
+
+function save(){
+  try {
+    localStorage.setItem(STORE, JSON.stringify({
+      files: S.files.map(f => ({...f, status: f.status === "ok" || f.status === "skip" ? f.status : "lost"})),
+      docs: S.docs, edits: S.edits, assign: S.assign, hidden: S.hidden, manual: S.manual, settings: S.settings, seq: S.seq
+    }));
+  } catch(e) {}
+}
+function load(){
+  try {
+    const j = JSON.parse(localStorage.getItem(STORE) || "null");
+    if (!j) return false;
+    Object.assign(S, j); S.units = [];
+    S.settings.baseDate = todayStr();
+    S.files.forEach(f => { if (f.status === "lost") { f.status = "fail"; f.msg = "새로고침 전에 끝나지 않음 — 파일을 다시 넣어주세요"; } });
+    return S.docs.length > 0 || S.files.length > 0;
+  } catch(e) { return false; }
+}
+
+// ---------- access (encrypted Gemini key) ----------
+const CFG_KEY = "dumpTruckList.cfg", CODE_KEY = "dumpTruckList.code";
+const enc = new TextEncoder(), dec = new TextDecoder();
+const b64u = u8 => btoa(String.fromCharCode(...u8)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const ub64u = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+async function deriveKey(code, salt){
+  const base = await crypto.subtle.importKey("raw", enc.encode(code), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 200000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function seal(obj, code){
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await deriveKey(code, salt), enc.encode(JSON.stringify(obj))));
+  const all = new Uint8Array(28 + ct.length); all.set(salt); all.set(iv, 16); all.set(ct, 28);
+  return b64u(all);
+}
+async function unseal(blob, code){
+  const all = ub64u(blob);
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(16, 28) }, await deriveKey(code, all.slice(0, 16)), all.slice(28));
+  return JSON.parse(dec.decode(pt));
+}
+const lsGet = k => { try { return localStorage.getItem(k); } catch(e) { return null; } };
+const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch(e) {} };
+
+(function readHash(){
+  const m = location.hash.match(/^#c=([A-Za-z0-9_-]+)(?:&p=([A-Za-z0-9_-]+))?/);
+  if (m) {
+    lsSet(CFG_KEY, m[1]);
+    let code = null; if (m[2]) { try { code = dec.decode(ub64u(m[2])); } catch(e) {} }
+    lsSet(CODE_KEY, code);
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+})();
+
+async function tryUnlock(code, remember){
+  const blob = lsGet(CFG_KEY);
+  if (!blob) return false;
+  try {
+    const c = await unseal(blob, code);
+    RT.api = { key: c.k, model: c.m || "gemini-flash-latest", rpm: +c.r || 5 };
+    RT.sample = true;
+    if (remember) lsSet(CODE_KEY, code);
+    renderGate(); renderProgress();
+    return true;
+  } catch(e) { return false; }
+}
+function renderGate(){
+  const has = !!lsGet(CFG_KEY);
+  $("#gate").classList.toggle("hide", !!RT.api);
+  $("#gateLock").classList.toggle("hide", !has);
+  $("#gateNone").classList.toggle("hide", has);
+  $("#apiState").textContent = RT.api ? `판독 엔진 연결됨 · ${RT.api.model} · 분당 ${RT.api.rpm}회` : "";
+  $("#btnLock").classList.toggle("hide", !RT.api);
+}
+
+function banner(kind, html){
+  const b = $("#banner");
+  if (!kind) { b.className = "banner"; b.innerHTML = ""; return; }
+  b.className = "banner show " + kind; b.innerHTML = html;
+}
+
+// ---------- ingest ----------
+const SKIP_RE = /(^|\/)(__MACOSX|\.DS_Store|Thumbs\.db|desktop\.ini)(\/|$)|(^|\/)\._/i;
+const IMG_EXT = ["jpg","jpeg","png","webp","gif","bmp","heic","heif","tif","tiff","jfif"];
+const TEXT_EXT = ["xlsx","xls","csv","docx"];
+const extOf = n => (n.split(".").pop() || "").toLowerCase();
+const dU = new TextDecoder("utf-8", {fatal: true});
+let dK; try { dK = new TextDecoder("euc-kr"); } catch(e) { dK = new TextDecoder("utf-8"); }
+const decodeName = b => { const u = b instanceof Uint8Array ? b : new Uint8Array(b); try { return dU.decode(u); } catch(e) { return dK.decode(u); } };
+
+async function addInputs(list){
+  banner();
+  $("#progTxt").textContent = "파일 읽는 중…";
+  for (const it of list) {
+    try { await ingest(it.file, it.path); } catch(e) { console.error(e); }
+  }
+  save(); renderAll();
+}
+
+function newFile(path, file, kind){
+  const rec = { id: "f" + (S.seq++), path, name: path.split("/").pop(), size: file.size, kind, status: "wait", msg: "", pages: 0 };
+  S.files.push(rec); RT.fileObj.set(rec.id, file); return rec;
+}
+
+async function ingest(file, path){
+  path = (path || file.name).replace(/\\/g, "/").replace(/^\/+/, "");
+  if (SKIP_RE.test(path)) return;
+  const ext = extOf(file.name);
+  if (ext === "zip") {
+    let zip;
+    try { zip = await JSZip.loadAsync(await file.arrayBuffer(), { decodeFileName: decodeName }); }
+    catch(e) { const r = newFile(path, file, "zip"); r.status = "fail"; r.msg = "ZIP을 열 수 없음(암호 또는 손상)"; return; }
+    const base = path.replace(/\.zip$/i, "");
+    const baseName = base.split("/").pop();
+    const entries = []; zip.forEach((p, e) => { if (!e.dir) entries.push(e); });
+    for (const e of entries) {
+      if (SKIP_RE.test(e.name)) continue;
+      const blob = await e.async("blob");
+      const inner = e.name.split("/")[0] === baseName ? e.name.slice(baseName.length + 1) : e.name;
+      await ingest(new File([blob], e.name.split("/").pop()), base + "/" + inner);
+    }
+    return;
+  }
+  // duplicate already done?
+  if (S.files.some(f => f.path === path && f.size === file.size && f.status === "ok")) return;
+  // replace stale record of the same file
+  const stale = S.files.find(f => f.path === path && f.size === file.size);
+  if (stale) removeFile(stale.id);
+
+  if (ext === "pdf") {
+    const rec = newFile(path, file, "pdf");
+    try {
+      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+      RT.pdf.set(rec.id, pdf); rec.pages = pdf.numPages;
+      for (let p = 1; p <= pdf.numPages; p++) addUnit(rec, { kind: "image", page: p });
+    } catch(e) { rec.status = "fail"; rec.msg = "PDF를 열 수 없음(암호 또는 손상)"; }
+  } else if (IMG_EXT.includes(ext)) {
+    const rec = newFile(path, file, "image"); rec.pages = 1;
+    addUnit(rec, { kind: "image", page: 1 });
+  } else if (TEXT_EXT.includes(ext)) {
+    const rec = newFile(path, file, "text"); rec.pages = 1;
+    try {
+      const text = await fileToText(file, ext);
+      if (!text.trim()) { rec.status = "skip"; rec.msg = "내용 없음"; }
+      else addUnit(rec, { kind: "text", page: 1, text: text.slice(0, 60000) });
+    } catch(e) { rec.status = "fail"; rec.msg = "파일을 읽을 수 없음"; }
+  } else {
+    const rec = newFile(path, file, "other");
+    rec.status = "skip";
+    rec.msg = ext === "hwp" || ext === "hwpx" ? "한글(hwp) 파일은 PDF로 저장해서 넣어주세요" : "지원하지 않는 형식";
+  }
+}
+function addUnit(rec, u){ S.units.push({ id: "u" + (S.seq++), fileId: rec.id, status: "wait", err: "", ...u }); }
+function removeFile(id){
+  S.files = S.files.filter(f => f.id !== id);
+  const uids = new Set(S.units.filter(u => u.fileId === id).map(u => u.id));
+  S.units = S.units.filter(u => u.fileId !== id);
+  S.docs = S.docs.filter(d => d.fileId !== id);
+  RT.fileObj.delete(id); RT.pdf.delete(id);
+}
+
+async function fileToText(file, ext){
+  if (ext === "docx") {
+    const z = await JSZip.loadAsync(await file.arrayBuffer());
+    const xml = await z.file("word/document.xml").async("string");
+    return xml.replace(/<\/w:p>/g, "\n").replace(/<w:tab\/>/g, "\t").replace(/<[^>]+>/g, "").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">");
+  }
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true, codepage: 949 });
+  return wb.SheetNames.map(n => "## 시트: " + n + "\n" + XLSX.utils.sheet_to_csv(wb.Sheets[n], { blankrows: false, dateNF: "yyyy-mm-dd" })).join("\n\n");
+}
+
+// ---------- image prep ----------
+async function toJpeg(source, maxSide){
+  let bmp;
+  if (source instanceof HTMLCanvasElement) bmp = source;
+  else {
+    try { bmp = await createImageBitmap(source); }
+    catch(e) {
+      bmp = await new Promise((res, rej) => { const url = URL.createObjectURL(source); const im = new Image(); im.onload = () => { res(im); }; im.onerror = () => rej(new Error("decode")); im.src = url; });
+    }
+  }
+  const w = bmp.width, h = bmp.height, sc = Math.min(1, maxSide / Math.max(w, h));
+  const c = document.createElement("canvas"); c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+  return await new Promise(r => c.toBlob(r, "image/jpeg", 0.88));
+}
+async function prepUnit(u){
+  const rec = S.files.find(f => f.id === u.fileId);
+  const file = RT.fileObj.get(u.fileId);
+  if (!file) throw new Error("원본 파일이 없음 — 다시 넣어주세요");
+  if (rec.kind === "pdf") {
+    const pdf = RT.pdf.get(rec.id);
+    const page = await pdf.getPage(u.page);
+    const v1 = page.getViewport({ scale: 1 });
+    const scale = Math.min(3, 2000 / Math.max(v1.width, v1.height));
+    const vp = page.getViewport({ scale });
+    const c = document.createElement("canvas"); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: g, viewport: vp }).promise;
+    return await toJpeg(c, 2000);
+  }
+  try { return await toJpeg(file, 2000); }
+  catch(e) {
+    const ext = extOf(rec.name);
+    throw new Error(ext === "heic" || ext === "heif" ? "아이폰 HEIC 사진은 이 브라우저에서 못 엶 — JPG로 바꿔 넣거나 Safari에서 열어주세요" : "이미지를 열 수 없음");
+  }
+}
+
+// ---------- prompt ----------
+const FORMAT = `각 원소 형식(모든 값은 문자열, 없으면 ""):
+{"img":번호,"docType":"자동차등록증|건설기계등록증|자동차보험|건설기계보험|정기검사|교육이수증|운전면허증|건설기계조종사면허|차량사진|제출목록|기타","vehicleNo":"차량번호(예: 서울12가3456, 12가3456, 경기04마1234 — 공백·하이픈 없이)","company":"제출한 협력업체명(폴더명·파일명 또는 서류의 소유자/계약자 상호로 판단)","owner":"소유자 또는 보험계약자 성명·상호","model":"차명·차종·톤수(예: 엑시언트 덤프 25.5톤)","driver":"운전원·교육이수자·면허 소지자 성명","inspectionExpiry":"검사 유효기간 종료일 YYYY-MM-DD","insuranceExpiry":"보험기간 종료일 YYYY-MM-DD","insurer":"보험사","trainingName":"교육명","trainingDate":"교육 이수일 YYYY-MM-DD","trainingExpiry":"교육 유효기간 만료일 YYYY-MM-DD","confidence":"high|medium|low","note":"특이사항 20자 이내"}`;
+const RULES = `규칙:
+- 날짜는 반드시 YYYY-MM-DD. 서류에 실제로 적힌 값만 쓰고 추측하지 마라. 안 보이거나 흐리면 "" 로 두고 confidence를 low로.
+- 자동차등록증은 뒷면 '검사유효기간' 표의 가장 늦은 종료일을 inspectionExpiry로. 건설기계등록증/검사증명서도 정기검사 유효기간 종료일을 inspectionExpiry로.
+- 보험증권·가입증명서는 보험기간의 끝 날짜를 insuranceExpiry로.
+- 한 이미지에 서류가 여러 장이면 각각 따로, 여러 차량이 나오면 차량마다 따로 원소를 만든다.
+- 주민등록번호, 주소, 전화번호, 계좌번호, 면허번호는 절대 적지 마라.
+- JSON 배열 외에 다른 말은 쓰지 마라.`;
+
+function pathHint(rec, u){ return rec.path + (rec.kind === "pdf" ? ` (PDF ${rec.pages}쪽 중 ${u.page}쪽)` : ""); }
+function buildImagePrompt(batch){
+  const lines = batch.map((u, i) => `[${i+1}] ${pathHint(S.files.find(f => f.id === u.fileId), u)}`).join("\n");
+  return `너는 한국 건설현장에서 협력업체가 제출한 덤프트럭 관련 서류를 판독하는 담당자다.
+첨부 이미지 ${batch.length}장은 순서대로 아래 파일이다(폴더명에 업체명이나 차량번호가 들어 있는 경우가 많다):
+${lines}
+
+각 이미지에서 보이는 서류를 모두 찾아 JSON 배열로만 답하라. 서류가 아니거나 판독 불가인 이미지도 docType "기타"로 하나 넣고 note에 이유를 적어라.
+${FORMAT}
+${RULES}`;
+}
+function buildTextPrompt(u){
+  const rec = S.files.find(f => f.id === u.fileId);
+  return `너는 한국 건설현장에서 협력업체가 제출한 덤프트럭 관련 자료를 정리하는 담당자다.
+아래는 업체가 낸 파일 "${rec.path}" 의 내용(엑셀은 CSV로 변환)이다. 여기에 나오는 차량마다 원소 하나씩 JSON 배열로만 답하라. "img"는 1, docType은 "제출목록". 차량 정보가 없으면 빈 배열 [].
+${FORMAT}
+${RULES}
+
+----- 파일 내용 -----
+${u.text}`;
+}
+
+// ---------- queue ----------
+function nextBatch(){
+  const pend = S.units.filter(u => u.status === "wait");
+  if (!pend.length) return null;
+  if (pend[0].kind === "text") return [pend[0]];
+  const out = [];
+  for (const u of pend) { if (u.kind !== "image") continue; out.push(u); if (out.length >= RT.batch) break; }
+  return out;
+}
+const sleep = (ms, signal) => new Promise((res, rej) => { const t = setTimeout(res, ms); if (signal) signal.addEventListener("abort", () => { clearTimeout(t); rej({ code: "cancelled" }); }, { once: true }); });
+const blobToB64 = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(b); });
+function parseJsonLoose(t){
+  t = String(t || "").trim();
+  try { return JSON.parse(t); } catch(e) {}
+  const f = t.match(/```(?:json)?\s*([\s\S]*?)```/); if (f) { try { return JSON.parse(f[1]); } catch(e) {} }
+  const a = Math.min(...["[","{"].map(c => t.indexOf(c)).filter(i => i >= 0)), z = Math.max(t.lastIndexOf("]"), t.lastIndexOf("}"));
+  if (a >= 0 && z > a) { try { return JSON.parse(t.slice(a, z + 1)); } catch(e) {} }
+  throw { code: "invalid_json" };
+}
+let lastCall = 0;
+async function gemini(prompt, blobs, signal, opt = {}){
+  const gap = 60000 / Math.max(1, RT.api.rpm) + 300;
+  const parts = [{ text: prompt }];
+  for (const b of blobs) parts.push({ inline_data: { mime_type: "image/jpeg", data: await blobToB64(b) } });
+  const body = JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: { temperature: 0, responseMimeType: "application/json" } });
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const wait = lastCall + gap - Date.now();
+    if (wait > 0) await sleep(wait, signal);
+    lastCall = Date.now();
+    let r;
+    try {
+      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(RT.api.model)}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": RT.api.key }, body, signal });
+    } catch(e) {
+      if (signal && signal.aborted) throw { code: "cancelled" };
+      throw { code: "network" };
+    }
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) {
+      const c = j.candidates && j.candidates[0];
+      const txt = c && c.content && (c.content.parts || []).map(p => p.text || "").join("");
+      if (!txt) throw { code: c && c.finishReason === "SAFETY" ? "refused" : "empty" };
+      return parseJsonLoose(txt);
+    }
+    const msg = (j.error && j.error.message) || "";
+    if (opt.noRetry && r.status !== 200) throw { code: r.status === 429 ? "rate_limited" : r.status === 404 ? "bad_model" : (r.status === 403 || /API key/i.test(msg)) ? "bad_key" : "http", message: msg, status: r.status };
+    if (r.status === 429) {
+      if (/per ?day|PerDay|daily/i.test(msg) || attempt === 3) throw { code: "rate_limited", daily: /day/i.test(msg) };
+      const d = (j.error.details || []).find(x => x.retryDelay);
+      await sleep(Math.min(90, d ? parseFloat(d.retryDelay) || 30 : 30) * 1000, signal);
+      continue;
+    }
+    if (r.status === 503 || r.status === 500) { await sleep(5000 * (attempt + 1), signal); continue; }
+    if (r.status === 400 && /API key/i.test(msg)) throw { code: "bad_key" };
+    if (r.status === 403) throw { code: "bad_key" };
+    if (r.status === 404 && RT.api.model !== "gemini-flash-latest") { RT.api.model = "gemini-flash-latest"; lastCall = 0; return gemini(prompt, blobs, signal, opt); }
+    if (r.status === 404) throw { code: "bad_model" };
+    throw { code: "http", message: msg };
+  }
+  throw { code: "upstream_error" };
+}
+
+async function run(){
+  if (RT.running) return;
+  if (!RT.api) { banner("warn", "먼저 위에서 <b>접속 코드</b>를 입력해주세요."); $("#gate").scrollIntoView({ behavior: "smooth" }); return; }
+  RT.running = true; RT.paused = false; RT.stop = false; banner();
+  renderProgress();
+  await worker();
+  RT.running = false;
+  S.files.forEach(updateFileStatus);
+  save(); renderAll();
+  const left = S.units.filter(u => u.status === "wait").length;
+  const failed = S.units.filter(u => u.status === "fail").length;
+  if (!left && !RT.paused && !RT.stop) banner(failed ? "warn" : "ok", failed ? `분석 완료 · ${failed}건은 판독 실패 — 오른쪽 목록에서 확인하거나 ‘실패한 것 다시 분석’을 눌러주세요.` : "분석 완료. 아래 표를 확인·수정한 뒤 엑셀로 내려받으세요.");
+}
+async function worker(){
+  while (!RT.stop && !RT.paused) {
+    const batch = nextBatch();
+    if (!batch) return;
+    batch.forEach(u => { u.status = "run"; });
+    batch.forEach(u => updateFileStatus(S.files.find(f => f.id === u.fileId)));
+    renderProgress(); renderFiles();
+    try { await processBatch(batch); }
+    catch(e) { handleErr(e, batch); }
+    batch.forEach(u => updateFileStatus(S.files.find(f => f.id === u.fileId)));
+    save(); renderAll();
+  }
+}
+async function processBatch(batch){
+  const ok = [], blobs = [];
+  for (const u of batch) {
+    if (u.kind === "text") { ok.push(u); continue; }
+    try { blobs.push(await prepUnit(u)); ok.push(u); }
+    catch(e) { u.status = "fail"; u.err = e.message || "준비 실패"; }
+  }
+  if (!ok.length) return;
+  const ctl = new AbortController(); RT.ctl.add(ctl);
+  try {
+    const prompt = ok[0].kind === "text" ? buildTextPrompt(ok[0]) : buildImagePrompt(ok);
+    const res = await gemini(prompt, blobs, ctl.signal);
+    const arr = Array.isArray(res) ? res : (res && Array.isArray(res.documents) ? res.documents : (res && typeof res === "object" ? [res] : []));
+    ok.forEach(u => { S.docs = S.docs.filter(d => d.unitId !== u.id); });
+    for (const r of arr) {
+      if (!r || typeof r !== "object") continue;
+      const idx = ok[0].kind === "text" ? 0 : (parseInt(r.img, 10) || 1) - 1;
+      const u = ok[idx]; if (!u) continue;
+      S.docs.push(normDoc(r, u));
+    }
+    ok.forEach(u => { u.status = "ok"; u.err = ""; });
+  } finally { RT.ctl.delete(ctl); }
+}
+function handleErr(e, batch){
+  const code = e && e.code;
+  const back = () => batch.forEach(u => { if (u.status === "run") u.status = "wait"; });
+  if (code === "cancelled") { back(); return; }
+  if (code === "rate_limited") {
+    back(); RT.paused = true;
+    banner("warn", e.daily ? "오늘 쓸 수 있는 무료 판독 횟수를 다 썼습니다. 내일(오후 4~5시 이후 초기화) <b>분석 이어하기</b>를 누르면 남은 것부터 계속합니다. 지금까지 결과는 그대로 남아 있습니다." : "판독 요청이 몰려 잠시 멈췄습니다. 1~2분 뒤 <b>분석 이어하기</b>를 눌러주세요.");
+    return;
+  }
+  if (code === "bad_key") { back(); RT.stop = true; banner("err", "Gemini API 키가 잘못되었거나 막혔습니다. 관리자 설정에서 키를 다시 넣고 공유 링크를 새로 만들어주세요."); return; }
+  if (code === "bad_model") { back(); RT.stop = true; banner("err", `모델 이름(${esc(RT.api.model)})을 찾을 수 없습니다. 관리자 설정에서 ‘모델 목록 불러오기’로 다시 골라주세요.`); return; }
+  if (code === "network") { back(); RT.stop = true; banner("err", "Google 판독 서버에 연결할 수 없습니다. 회사 보안에서 generativelanguage.googleapis.com 접속이 막혀 있는지 확인해주세요."); return; }
+  const msg = code === "invalid_json" ? "판독 결과 형식 오류" : code === "refused" ? "판독 거절됨" : code === "empty" ? "판독 결과 없음" : "일시적 오류";
+  batch.forEach(u => { if (u.status === "run") { u.status = "fail"; u.err = msg; } });
+}
+function updateFileStatus(rec){
+  if (!rec) return;
+  const us = S.units.filter(u => u.fileId === rec.id);
+  if (!us.length) return;
+  if (us.some(u => u.status === "run")) rec.status = "run";
+  else if (us.some(u => u.status === "wait")) rec.status = "wait";
+  else if (us.every(u => u.status === "fail")) { rec.status = "fail"; rec.msg = us[0].err; }
+  else { rec.status = "ok"; const f = us.filter(u => u.status === "fail"); rec.msg = f.length ? `${f.length}쪽 실패: ${f[0].err}` : ""; if (f.length) rec.status = "fail"; }
+}
+
+// ---------- normalise ----------
+const VNO_RE = /([가-힣]{2})?\s?(\d{2,3})\s?([가-힣])\s?(\d{4})/;
+function vkeyOf(no){
+  if (!no) return "";
+  const s = String(no).replace(/[\s\-·._]/g, "");
+  const m = s.match(/(\d{2,3})([가-힣])(\d{4})/);
+  return m ? m[1] + m[2] + m[3] : "";
+}
+function normDate(v){
+  if (!v) return "";
+  const m = String(v).match(/(\d{4})\D{0,3}(\d{1,2})\D{0,3}(\d{1,2})/);
+  if (!m) return "";
+  const y = +m[1], mo = +m[2], d = +m[3];
+  if (y < 1990 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) return "";
+  return `${y}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+}
+function normDoc(r, u){
+  const rec = S.files.find(f => f.id === u.fileId);
+  const str = v => (v == null ? "" : String(v)).trim();
+  let vehicleNo = str(r.vehicleNo).replace(/[\s\-·]/g, "");
+  let vkey = vkeyOf(vehicleNo);
+  let fromPath = false;
+  if (!vkey && !["교육이수증","운전면허증","건설기계조종사면허"].includes(str(r.docType))) {
+    const m = rec.path.match(VNO_RE);
+    if (m) { vehicleNo = (m[1] || "") + m[2] + m[3] + m[4]; vkey = vkeyOf(vehicleNo); fromPath = true; }
+  }
+  const dir = rec.path.includes("/") ? rec.path.slice(0, rec.path.lastIndexOf("/")) : "";
+  return {
+    id: "d" + (S.seq++), unitId: u.id, fileId: rec.id, path: rec.path, page: u.page, dir,
+    docType: str(r.docType) || "기타", vehicleNo, vkey, fromPath,
+    company: str(r.company), owner: str(r.owner), model: str(r.model), driver: str(r.driver),
+    inspectionExpiry: normDate(r.inspectionExpiry), insuranceExpiry: normDate(r.insuranceExpiry), insurer: str(r.insurer),
+    trainingName: str(r.trainingName), trainingDate: normDate(r.trainingDate), trainingExpiry: normDate(r.trainingExpiry),
+    confidence: str(r.confidence) || "medium", note: str(r.note),
+  };
+}
+
+// ---------- build vehicles ----------
+function addMonths(d, n){ const [y,m,dd] = d.split("-").map(Number); const t = new Date(y, m - 1 + n, dd); t.setDate(t.getDate() - 1); return ymd(t); }
+const maxDate = arr => arr.filter(Boolean).sort().pop() || "";
+function mode(arr){ const c = {}; let best = "", n = 0; arr.filter(Boolean).forEach(v => { c[v] = (c[v]||0) + 1; if (c[v] > n) { n = c[v]; best = v; } }); return best; }
+
+let BUILT = { vehicles: [], unmatched: [], keyOfDoc: {} };
+function build(){
+  const groups = new Map();
+  const keyOfDoc = {};
+  const put = (k, d) => { if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); keyOfDoc[d.id] = k; };
+  const pending = [];
+  for (const d of S.docs) {
+    const k = S.assign[d.id] || d.vkey;
+    if (k) put(k, d); else pending.push(d);
+  }
+  // auto-match docs without plate: by driver, then by folder
+  const byDriver = {}, byDir = {};
+  for (const [k, ds] of groups) for (const d of ds) {
+    if (d.driver) (byDriver[d.driver] = byDriver[d.driver] || new Set()).add(k);
+    if (d.dir) (byDir[d.dir] = byDir[d.dir] || new Set()).add(k);
+  }
+  const unmatched = [];
+  for (const d of pending) {
+    const useful = d.inspectionExpiry || d.insuranceExpiry || d.trainingDate || d.trainingExpiry || d.driver;
+    let k = "";
+    if (d.driver && byDriver[d.driver] && byDriver[d.driver].size === 1) k = [...byDriver[d.driver]][0];
+    else if (d.dir && byDir[d.dir] && byDir[d.dir].size === 1) k = [...byDir[d.dir]][0];
+    if (k) { put(k, d); d._auto = true; }
+    else if (useful && d.docType !== "차량사진") unmatched.push(d);
+  }
+  const months = parseInt(S.settings.trainMonths, 10);
+  const vehicles = [];
+  const keys = new Set([...groups.keys(), ...S.manual]);
+  for (const k of keys) {
+    if (S.hidden.includes(k)) continue;
+    const ds = groups.get(k) || [];
+    const regs = ds.filter(d => REG_TYPES.includes(d.docType));
+    const plates = ds.map(d => d.vehicleNo).filter(v => vkeyOf(v) === k);
+    const vehicleNo = plates.sort((a, b) => b.length - a.length)[0] || (k.startsWith("m") ? "" : k);
+    const ins = ds.filter(d => d.insuranceExpiry).sort((a, b) => a.insuranceExpiry < b.insuranceExpiry ? 1 : -1)[0];
+    const trDocs = ds.filter(d => d.trainingDate || d.trainingExpiry);
+    let trainingExpiry = maxDate(trDocs.map(d => d.trainingExpiry));
+    const trainingDate = maxDate(trDocs.map(d => d.trainingDate));
+    let trainCalc = false;
+    if (!trainingExpiry && trainingDate && months > 0) { trainingExpiry = addMonths(trainingDate, months); trainCalc = true; }
+    const notes = [];
+    if (ds.some(d => d.confidence === "low")) notes.push("일부 흐림·확인 필요");
+    if (trainCalc) notes.push(`교육만료 = 이수일+${months}개월`);
+    const drivers = [...new Set(ds.map(d => d.driver).filter(Boolean))];
+    const v = {
+      key: k,
+      company: mode(ds.map(d => d.company)),
+      vehicleNo,
+      model: mode(regs.map(d => d.model)) || mode(ds.map(d => d.model)),
+      owner: mode(regs.map(d => d.owner)) || mode(ds.map(d => d.owner)),
+      driver: drivers.join(", "),
+      reg: regs.length ? "O" : "X",
+      inspection: maxDate(ds.map(d => d.inspectionExpiry)),
+      insurance: ins ? ins.insuranceExpiry : "",
+      insurer: ins ? ins.insurer : "",
+      trainingDate, training: trainingExpiry,
+      note: notes.join(" / "),
+      sources: [...new Set(ds.map(d => d.path + (d.page > 1 || S.files.find(f => f.id === d.fileId)?.kind === "pdf" ? ` (${d.page}쪽)` : "")))],
+      docs: ds,
+    };
+    Object.assign(v, S.edits[k] || {});
+    vehicles.push(v);
+  }
+  vehicles.sort((a, b) => (a.company || "힣").localeCompare(b.company || "힣", "ko") || a.vehicleNo.localeCompare(b.vehicleNo, "ko"));
+  BUILT = { vehicles, unmatched, keyOfDoc };
+  return BUILT;
+}
+
+function days(d){
+  if (!d) return null;
+  const a = new Date(d + "T00:00:00"), b = new Date((S.settings.baseDate || todayStr()) + "T00:00:00");
+  return Math.round((a - b) / 86400000);
+}
+function cellState(d, issued){
+  const n = days(d), w = +S.settings.warnDays || 30;
+  if (n === null && issued) return { cls: "c-miss", txt: "만료일 미기재", lvl: "nodate" };
+  if (n === null) return { cls: "c-miss", txt: "미제출", lvl: "miss" };
+  if (n < 0) return { cls: "c-exp", txt: `만료 ${-n}일 지남`, lvl: "exp" };
+  if (n <= w) return { cls: "c-warn", txt: n === 0 ? "오늘 만료" : `D-${n}`, lvl: "warn" };
+  return { cls: "", txt: `D-${n}`, lvl: "ok" };
+}
+function issues(v){
+  const out = [];
+  if (v.reg !== "O") out.push({ lvl: "miss", t: "등록증 없음" });
+  [["inspection","검사"],["insurance","보험"],["training","교육"]].forEach(([f, n]) => {
+    const s = cellState(v[f], f === "training" && v.trainingDate);
+    if (s.lvl === "nodate") out.push({ lvl: "miss", t: n + " 만료일 확인" });
+    else if (s.lvl === "exp") out.push({ lvl: "exp", t: n + " 만료" });
+    else if (s.lvl === "warn") out.push({ lvl: "warn", t: n + " 임박" });
+    else if (s.lvl === "miss") out.push({ lvl: "miss", t: n + " 누락" });
+  });
+  return out;
+}
+function statusText(v){ const i = issues(v); return i.length ? i.map(x => x.t).join(", ") : "정상"; }
+
+// ---------- render ----------
+function renderAll(){ build(); renderProgress(); renderFiles(); renderStats(); renderTable(); renderUnmatched(); }
+
+function renderProgress(){
+  const total = S.units.length, done = S.units.filter(u => u.status === "ok" || u.status === "fail").length;
+  const wait = S.units.filter(u => u.status === "wait").length;
+  const fail = S.units.filter(u => u.status === "fail").length;
+  $("#progBar").style.width = total ? (done / total * 100) + "%" : (S.docs.length ? "100%" : "0");
+  $("#progTxt").textContent = total ? `${done} / ${total}쪽 처리${fail ? ` · 실패 ${fail}` : ""}` : (S.files.length ? "이전 작업 결과" : "파일을 넣어주세요");
+  const runBtn = $("#btnRun");
+  runBtn.disabled = RT.running || !wait;
+  runBtn.textContent = RT.paused || (done && wait) ? "분석 이어하기" : "분석 시작";
+  $("#btnStop").classList.toggle("hide", !RT.running);
+  $("#btnRetry").classList.toggle("hide", RT.running || !fail || !S.units.some(u => u.status === "fail" && RT.fileObj.has(u.fileId)));
+  if (wait && !RT.running) {
+    const imgs = S.units.filter(u => u.status === "wait" && u.kind === "image").length;
+    const txt = S.units.filter(u => u.status === "wait" && u.kind === "text").length;
+    const calls = Math.ceil(imgs / RT.batch) + txt;
+    const mins = RT.api ? Math.ceil(calls / RT.api.rpm) : null;
+    $("#estTxt").textContent = `대기 ${wait}쪽 → 판독 요청 약 ${calls}회${mins ? ` · 예상 ${mins}분 이상` : ""}`;
+  } else $("#estTxt").textContent = RT.running ? "판독 중… 창을 닫지 마세요. 무료 키는 분당 요청 수가 적어서 천천히 진행됩니다." : "";
+  $("#btnExport").disabled = !BUILT.vehicles.length;
+}
+
+function renderFiles(){
+  const order = { run: 0, fail: 1, wait: 2, skip: 3, ok: 4 };
+  const fs = [...S.files].sort((a, b) => (order[a.status] - order[b.status]) || a.path.localeCompare(b.path, "ko"));
+  const lbl = { run: "판독 중", wait: "대기", ok: "완료", fail: "실패", skip: "제외" };
+  $("#fileList").innerHTML = fs.map(f => {
+    const n = S.docs.filter(d => d.fileId === f.id).length;
+    return `<div class="frow"><span class="dot ${f.status}"></span><span class="p">${esc(f.path)}${f.msg ? `<br><span class="muted">${esc(f.msg)}</span>` : ""}</span><span class="s muted">${lbl[f.status] || ""}${f.status === "ok" ? ` · 서류 ${n}` : ""}${f.pages > 1 ? ` · ${f.pages}쪽` : ""}</span></div>`;
+  }).join("") || "";
+}
+
+function renderStats(){
+  const vs = BUILT.vehicles;
+  const cnt = lvl => vs.filter(v => issues(v).some(i => i.lvl === lvl)).length;
+  const okN = vs.filter(v => !issues(v).length).length;
+  const items = [
+    ["all", "", vs.length, "전체 차량"],
+    ["ok", "", okN, "정상"],
+    ["exp", "r", cnt("exp"), "만료 있음"],
+    ["warn", "a", cnt("warn"), "임박 있음"],
+    ["miss", "g", cnt("miss"), "서류 누락"],
+  ];
+  $("#stats").innerHTML = items.map(([k, c, n, t]) => `<div class="card stat ${c} ${RT.filter === k ? "on" : ""}" data-f="${k}"><b>${n}</b><span>${t}</span></div>`).join("")
+    + (BUILT.unmatched.length ? `<div class="card stat a" data-f="um"><b>${BUILT.unmatched.length}</b><span>매칭 안 된 서류</span></div>` : "");
+  const comps = [...new Set(vs.map(v => v.company).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
+  const sel = $("#fCompany"), cur = sel.value;
+  sel.innerHTML = `<option value="">전체 업체 (${comps.length})</option>` + comps.map(c => `<option ${c === cur ? "selected" : ""}>${esc(c)}</option>`).join("");
+}
+
+function visibleVehicles(){
+  const q = $("#q").value.trim().toLowerCase().replace(/\s/g, "");
+  const comp = $("#fCompany").value;
+  return BUILT.vehicles.filter(v => {
+    if (comp && v.company !== comp) return false;
+    if (q && ![v.vehicleNo, v.company, v.driver, v.owner].join("|").toLowerCase().replace(/\s/g, "").includes(q)) return false;
+    const is = issues(v);
+    if (RT.filter === "ok") return !is.length;
+    if (["exp","warn","miss"].includes(RT.filter)) return is.some(i => i.lvl === RT.filter);
+    return true;
+  });
+}
+
+function renderTable(){
+  const vs = visibleVehicles();
+  $("#empty").classList.toggle("hide", vs.length > 0);
+  $("#empty").textContent = BUILT.vehicles.length ? "조건에 맞는 차량이 없습니다." : "아직 정리된 차량이 없습니다. 위에 폴더나 ZIP을 넣고 분석 시작을 눌러주세요.";
+  const inp = (v, f, ph = "") => `<input data-k="${esc(v.key)}" data-f="${f}" value="${esc(v[f])}" placeholder="${ph}">`;
+  const dcell = (v, f) => { const s = cellState(v[f], f === "training" && v.trainingDate); return `<td class="${s.cls}"><input type="date" data-k="${esc(v.key)}" data-f="${f}" value="${esc(v[f])}"><span class="dd">${s.txt}${f === "insurance" && v.insurer ? " · " + esc(v.insurer) : ""}${f === "training" && v.trainingDate ? " · 이수 " + esc(v.trainingDate) : ""}</span></td>`; };
+  $("#tbody").innerHTML = vs.map((v, i) => {
+    const is = issues(v);
+    const chips = is.length ? is.map(x => `<span class="chip ${x.lvl === "exp" ? "r" : x.lvl === "warn" ? "a" : "g"}">${x.t}</span>`).join("") : `<span class="chip ok">정상</span>`;
+    return `<tr>
+      <td class="num">${i + 1}</td>
+      <td class="wide">${inp(v, "company", "업체명")}</td>
+      <td class="vno">${inp(v, "vehicleNo", "차량번호")}</td>
+      <td class="wide">${inp(v, "model")}</td>
+      <td>${inp(v, "owner")}</td>
+      <td>${inp(v, "driver")}</td>
+      <td class="reg ${v.reg === "O" ? "o" : "x"}"><select data-k="${esc(v.key)}" data-f="reg"><option ${v.reg === "O" ? "selected" : ""}>O</option><option ${v.reg !== "O" ? "selected" : ""}>X</option></select></td>
+      ${dcell(v, "inspection")}${dcell(v, "insurance")}${dcell(v, "training")}
+      <td style="min-width:120px">${chips}</td>
+      <td class="wide">${inp(v, "note")}</td>
+      <td><div class="src" title="${esc(v.sources.join("\n"))}">${v.sources.length ? esc(v.sources.length + "개 · " + v.sources[0].split("/").pop()) : "직접 입력"}</div></td>
+      <td><button class="sm ghost" data-del="${esc(v.key)}" title="이 차량 빼기">✕</button></td>
+    </tr>`;
+  }).join("");
+}
+
+function renderUnmatched(){
+  const um = BUILT.unmatched;
+  $("#umCard").classList.toggle("hide", !um.length);
+  const opts = BUILT.vehicles.map(v => `<option value="${esc(v.key)}">${esc(v.vehicleNo || v.key)}${v.company ? " · " + esc(v.company) : ""}</option>`).join("");
+  $("#umList").innerHTML = um.map(d => {
+    const facts = [d.docType, d.driver && "이름 " + d.driver, d.inspectionExpiry && "검사 " + d.inspectionExpiry, d.insuranceExpiry && "보험 " + d.insuranceExpiry, d.trainingDate && "이수 " + d.trainingDate, d.trainingExpiry && "교육만료 " + d.trainingExpiry].filter(Boolean).join(" · ");
+    return `<div class="um-row"><div><b>${esc(facts)}</b><br><span class="muted">${esc(d.path)}${d.page > 1 ? ` (${d.page}쪽)` : ""}</span></div>
+      <select data-assign="${esc(d.id)}"><option value="">차량 선택…</option>${opts}</select></div>`;
+  }).join("");
+}
+
+// ---------- events ----------
+$("#btnFolder").onclick = () => $("#inFolder").click();
+$("#btnFiles").onclick = () => $("#inFiles").click();
+$("#inFolder").onchange = e => { const l = [...e.target.files].map(f => ({ file: f, path: f.webkitRelativePath || f.name })); e.target.value = ""; addInputs(l); };
+$("#inFiles").onchange = e => { const l = [...e.target.files].map(f => ({ file: f, path: f.name })); e.target.value = ""; addInputs(l); };
+
+let dragN = 0;
+window.addEventListener("dragenter", e => { e.preventDefault(); dragN++; $("#overlay").classList.add("show"); $("#drop").classList.add("over"); });
+window.addEventListener("dragleave", e => { dragN--; if (dragN <= 0) { dragN = 0; $("#overlay").classList.remove("show"); $("#drop").classList.remove("over"); } });
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("drop", async e => {
+  e.preventDefault(); dragN = 0; $("#overlay").classList.remove("show"); $("#drop").classList.remove("over");
+  const items = [...(e.dataTransfer.items || [])];
+  const entries = items.map(it => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
+  let list = [];
+  if (entries.length) { for (const en of entries) list.push(...await walk(en, "")); }
+  else list = [...e.dataTransfer.files].map(f => ({ file: f, path: f.name }));
+  addInputs(list);
+});
+async function walk(entry, prefix){
+  if (entry.isFile) { const f = await new Promise((res, rej) => entry.file(res, rej)); return [{ file: f, path: prefix + f.name }]; }
+  if (entry.isDirectory) {
+    const r = entry.createReader(); const all = [];
+    for (;;) { const b = await new Promise((res, rej) => r.readEntries(res, rej)); if (!b.length) break; all.push(...b); }
+    const out = []; for (const c of all) out.push(...await walk(c, prefix + entry.name + "/")); return out;
+  }
+  return [];
+}
+
+$("#btnRun").onclick = () => run();
+$("#btnStop").onclick = () => { RT.paused = true; RT.ctl.forEach(c => c.abort()); banner("warn", "일시 정지했습니다. <b>분석 이어하기</b>로 계속할 수 있습니다."); renderProgress(); };
+$("#btnRetry").onclick = () => { S.units.forEach(u => { if (u.status === "fail" && RT.fileObj.has(u.fileId)) { u.status = "wait"; u.err = ""; } }); S.files.forEach(updateFileStatus); renderAll(); run(); };
+$("#btnReset").onclick = () => {
+  if (RT.running) return;
+  const b = $("#btnReset");
+  if (b.dataset.armed) { try { localStorage.removeItem(STORE); } catch(e) {} location.reload(); return; }
+  b.dataset.armed = "1"; b.textContent = "정말 지울까요? 한 번 더 클릭"; setTimeout(() => { delete b.dataset.armed; b.textContent = "처음부터 다시"; }, 3000);
+};
+
+$("#tbody").addEventListener("change", e => {
+  const t = e.target, k = t.dataset.k, f = t.dataset.f;
+  if (!k || !f) return;
+  (S.edits[k] = S.edits[k] || {})[f] = t.value;
+  save(); build(); renderStats(); renderTable(); renderUnmatched(); renderProgress();
+});
+$("#tbody").addEventListener("click", e => {
+  const k = e.target.dataset && e.target.dataset.del; if (!k) return;
+  S.hidden.push(k); save(); renderAll();
+});
+$("#umList").addEventListener("change", e => {
+  const id = e.target.dataset.assign; if (!id || !e.target.value) return;
+  S.assign[id] = e.target.value; save(); renderAll();
+});
+$("#stats").addEventListener("click", e => {
+  const c = e.target.closest(".stat"); if (!c) return;
+  if (c.dataset.f === "um") { $("#umCard").scrollIntoView({ behavior: "smooth" }); return; }
+  RT.filter = c.dataset.f; renderStats(); renderTable();
+});
+$("#q").oninput = renderTable;
+$("#fCompany").onchange = renderTable;
+$("#btnAdd").onclick = () => { const k = "m" + (S.seq++); S.manual.push(k); S.edits[k] = { reg: "X" }; save(); RT.filter = "all"; $("#q").value = ""; renderAll(); };
+["baseDate","warnDays","trainMonths"].forEach(id => {
+  const el = $("#" + id); el.value = S.settings[id] ?? "";
+  el.onchange = () => { S.settings[id] = el.value || (id === "baseDate" ? todayStr() : ""); save(); renderAll(); };
+});
+
+// ---------- export ----------
+$("#btnExport").onclick = async () => {
+  const blob = makeXlsx();
+  const name = `덤프트럭_차량리스트_${(S.settings.baseDate || todayStr()).replace(/-/g, "")}.xlsx`;
+  try { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.style.display = "none"; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); banner("ok", "엑셀 파일을 내려받았습니다: " + esc(name)); }
+  catch(e) { banner("err", "파일 저장을 할 수 없는 화면입니다."); }
+};
+
+function makeXlsx(){
+  build();
+  const B = { style: "thin", color: { rgb: "D5DAE1" } };
+  const border = { top: B, bottom: B, left: B, right: B };
+  const H = { font: { bold: true, color: { rgb: "FFFFFF" }, sz: 10 }, fill: { fgColor: { rgb: "1E293B" } }, alignment: { horizontal: "center", vertical: "center", wrapText: true }, border };
+  const base = { font: { sz: 10 }, alignment: { vertical: "center" }, border };
+  const ctr = { ...base, alignment: { horizontal: "center", vertical: "center" } };
+  const fillOf = lvl => lvl === "exp" ? { fill: { fgColor: { rgb: "FDE2E2" } }, font: { sz: 10, bold: true, color: { rgb: "B91C1C" } } }
+    : lvl === "warn" ? { fill: { fgColor: { rgb: "FEF3C7" } }, font: { sz: 10, bold: true, color: { rgb: "92400E" } } }
+    : lvl === "miss" ? { fill: { fgColor: { rgb: "EEF1F5" } }, font: { sz: 10, color: { rgb: "64748B" } } } : {};
+  const cell = (v, s) => ({ v: v ?? "", t: typeof v === "number" ? "n" : "s", s });
+
+  const wb = XLSX.utils.book_new();
+  // sheet 1
+  const head = ["No","업체명","차량번호","차종","소유자","운전원","등록증","검사 만료일","검사 D-day","보험 만료일","보험사","보험 D-day","교육 이수일","교육 만료일","교육 D-day","상태","비고","근거 파일"];
+  const title = `덤프트럭 차량리스트 (기준일 ${S.settings.baseDate || todayStr()})`;
+  const rows = [[cell(title, { font: { bold: true, sz: 14 } })], [], head.map(h => cell(h, H))];
+  BUILT.vehicles.forEach((v, i) => {
+    const sI = cellState(v.inspection), sS = cellState(v.insurance), sT = cellState(v.training, v.trainingDate);
+    const is = issues(v);
+    const stLvl = is.some(x => x.lvl === "exp") ? "exp" : is.some(x => x.lvl === "miss") ? "miss" : is.some(x => x.lvl === "warn") ? "warn" : "";
+    const d = (val, st) => cell(val || st.txt, { ...ctr, ...fillOf(st.lvl === "ok" ? "" : st.lvl === "nodate" ? "miss" : st.lvl) });
+    const dd = (val, st) => cell(val ? st.txt : "", { ...ctr, ...fillOf(st.lvl === "ok" ? "" : st.lvl) });
+    rows.push([
+      cell(i + 1, ctr), cell(v.company, base), cell(v.vehicleNo, { ...base, font: { sz: 10, bold: true } }), cell(v.model, base), cell(v.owner, base), cell(v.driver, base),
+      cell(v.reg, { ...ctr, ...(v.reg === "O" ? {} : fillOf("miss")) }),
+      d(v.inspection, sI), dd(v.inspection, sI),
+      d(v.insurance, sS), cell(v.insurer, base), dd(v.insurance, sS),
+      cell(v.trainingDate, ctr), d(v.training, sT), dd(v.training, sT),
+      cell(statusText(v), { ...base, ...fillOf(stLvl), alignment: { vertical: "center", wrapText: true } }),
+      cell(v.note, { ...base, alignment: { vertical: "center", wrapText: true } }),
+      cell(v.sources.join("\n"), { ...base, font: { sz: 9, color: { rgb: "64748B" } }, alignment: { vertical: "center", wrapText: true } }),
+    ]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = [5,16,14,18,14,12,7,12,13,12,12,13,12,12,13,22,20,40].map(w => ({ wch: w }));
+  ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: head.length - 1 } }];
+  ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 2, c: 0 }, e: { r: Math.max(2, rows.length - 1), c: head.length - 1 } }) };
+  ws["!rows"] = [{ hpt: 24 }, {}, { hpt: 22 }];
+  XLSX.utils.book_append_sheet(wb, ws, "차량리스트");
+
+  // sheet 2: documents
+  const h2 = ["파일","쪽","서류 종류","차량번호(판독)","연결된 차량","업체","소유자/계약자","운전원","차종","검사 만료","보험 만료","보험사","교육명","교육 이수일","교육 만료","판독 신뢰도","비고"];
+  const vByKey = {}; BUILT.vehicles.forEach(v => vByKey[v.key] = v);
+  const r2 = [h2.map(h => cell(h, H))];
+  [...S.docs].sort((a, b) => a.path.localeCompare(b.path, "ko") || a.page - b.page).forEach(d => {
+    const k = BUILT.keyOfDoc[d.id]; const v = k && vByKey[k];
+    r2.push([d.path, d.page, d.docType, d.vehicleNo + (d.fromPath ? " (파일명)" : ""), v ? v.vehicleNo : "(미연결)", d.company, d.owner, d.driver, d.model, d.inspectionExpiry, d.insuranceExpiry, d.insurer, d.trainingName, d.trainingDate, d.trainingExpiry, ({high:"높음",medium:"보통",low:"낮음"})[d.confidence] || d.confidence, d.note]
+      .map((x, j) => cell(x, { ...base, ...(j === 15 && d.confidence === "low" ? fillOf("warn") : {}), ...(j === 4 && !v ? fillOf("miss") : {}) })));
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(r2);
+  ws2["!cols"] = [40,5,14,14,14,14,14,10,16,11,11,12,18,11,11,9,20].map(w => ({ wch: w }));
+  ws2["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(0, r2.length - 1), c: h2.length - 1 } }) };
+  XLSX.utils.book_append_sheet(wb, ws2, "서류별 판독결과");
+
+  // sheet 3: problem files
+  const bad = S.files.filter(f => f.status === "fail" || f.status === "skip" || f.status === "wait");
+  if (bad.length) {
+    const r3 = [["파일","상태","사유"].map(h => cell(h, H))];
+    bad.forEach(f => r3.push([f.path, ({fail:"실패",skip:"제외",wait:"미분석"})[f.status], f.msg].map(x => cell(x, base))));
+    const ws3 = XLSX.utils.aoa_to_sheet(r3); ws3["!cols"] = [{ wch: 50 }, { wch: 8 }, { wch: 50 }];
+    XLSX.utils.book_append_sheet(wb, ws3, "처리 못한 파일");
+  }
+  const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+}
+
+
+// ---------- admin / gate events ----------
+$("#lnkAdmin").onclick = e => { e.preventDefault(); $("#admin").classList.remove("hide"); $("#admin").scrollIntoView({ behavior: "smooth" }); };
+$("#btnAdminClose").onclick = () => $("#admin").classList.add("hide");
+const admMsg = (t, ok) => { const m = $("#admMsg"); m.textContent = t; m.style.color = ok ? "var(--acc)" : "var(--red)"; };
+async function listModels(key){
+  const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": key } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((j.error && j.error.message) || ("HTTP " + r.status));
+  return (j.models || []).filter(m => (m.supportedGenerationMethods || []).includes("generateContent")).map(m => m.name.replace(/^models\//, ""));
+}
+$("#btnModels").onclick = async () => {
+  const key = $("#admKey").value.trim(); if (!key) return admMsg("API 키를 먼저 넣어주세요.");
+  try {
+    const ms = (await listModels(key)).filter(n => /gemini/i.test(n) && !/embed|tts|image|audio|live/i.test(n));
+    $("#modelList").innerHTML = ms.map(n => `<option value="${esc(n)}">`).join("");
+    admMsg(`모델 ${ms.length}개 확인됨 — 그대로 gemini-flash-latest 를 쓰면 항상 최신 Flash로 연결됩니다.`, true);
+  } catch(e) { admMsg("키 확인 실패: " + e.message); }
+};
+$("#btnTest").onclick = async () => {
+  const key = $("#admKey").value.trim(), model = $("#admModel").value.trim();
+  if (!key) return admMsg("API 키를 넣어주세요.");
+  admMsg("테스트 중…", true);
+  const saved = RT.api; RT.api = { key, model, rpm: 1000 };
+  const t0 = Date.now(), tick = setInterval(() => admMsg(`테스트 중… ${Math.round((Date.now() - t0) / 1000)}초`, true), 1000);
+  const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 60000);
+  try { const r = await gemini('JSON으로만 답하라: {"ok":true}', [], ctl.signal, { noRetry: true }); const ok = r && (r.ok || (Array.isArray(r) && r[0] && r[0].ok)); admMsg(ok ? `정상 동작합니다 (${model}).` : "응답은 왔지만 형식이 이상합니다.", !!ok); }
+  catch(e) { admMsg(e.code === "bad_key" ? "키가 잘못되었습니다." : e.code === "bad_model" ? "모델 이름을 찾을 수 없습니다. ‘모델 목록 불러오기’를 눌러보세요." : e.code === "network" ? "Google 서버에 연결할 수 없습니다." : e.code === "rate_limited" ? "Google이 요청 한도 초과라고 답했습니다: " + (e.message || "").slice(0, 200) : e.code === "cancelled" ? "60초 안에 응답이 없습니다. 회사/집 네트워크에서 Google 서버 연결을 확인해주세요." : "오류: " + (e.message || e.code)); }
+  finally { clearInterval(tick); clearTimeout(to); if (RT.api && RT.api.model !== model) $("#admModel").value = RT.api.model; RT.api = saved; lastCall = 0; }
+};
+$("#btnMake").onclick = async () => {
+  const key = $("#admKey").value.trim(), model = $("#admModel").value.trim() || "gemini-flash-latest", rpm = +$("#admRpm").value || 5, code = $("#admCode").value.trim();
+  if (!key) return admMsg("API 키를 넣어주세요.");
+  if (code.length < 4) return admMsg("접속 코드는 4자 이상으로 정해주세요.");
+  const blob = await seal({ k: key, m: model, r: rpm }, code);
+  const url = location.origin + location.pathname + "#c=" + blob + ($("#admEmbed").checked ? "&p=" + b64u(enc.encode(code)) : "");
+  $("#admLink").value = url; $("#admLink").classList.remove("hide"); $("#btnCopy").classList.remove("hide");
+  lsSet(CFG_KEY, blob);
+  await tryUnlock(code, true);
+  admMsg($("#admEmbed").checked ? "링크를 만들었고 이 PC에도 적용했습니다. 이 링크만 보내면 받는 사람은 바로 쓸 수 있습니다." : "링크를 만들었고 이 PC에도 적용했습니다. 다른 PC에는 이 링크와 접속 코드를 따로 전달하세요.", true);
+};
+$("#btnCopy").onclick = async () => { try { await navigator.clipboard.writeText($("#admLink").value); admMsg("복사했습니다.", true); } catch(e) { $("#admLink").select(); } };
+$("#btnUnlock").onclick = async () => {
+  const code = $("#codeIn").value.trim(); if (!code) return;
+  $("#codeMsg").textContent = "";
+  if (!(await tryUnlock(code, $("#codeRem").checked))) $("#codeMsg").textContent = "접속 코드가 맞지 않습니다.";
+  else { $("#codeIn").value = ""; banner("ok", "판독 엔진에 연결됐습니다. 폴더나 ZIP을 넣고 분석 시작을 누르세요."); }
+};
+$("#codeIn").onkeydown = e => { if (e.key === "Enter") $("#btnUnlock").click(); };
+$("#btnLock").onclick = () => { RT.api = null; RT.sample = null; lsSet(CODE_KEY, null); renderGate(); renderProgress(); };
+(async () => { renderGate(); const c = lsGet(CODE_KEY); if (c) await tryUnlock(c, true); })();
+
+// ---------- init ----------
+if (load()) {
+  ["baseDate","warnDays","trainMonths"].forEach(id => { $("#" + id).value = S.settings[id] ?? ""; });
+  if (S.docs.length) banner("ok", "이전에 정리한 결과를 불러왔습니다. 새 파일을 더 넣거나, ‘처음부터 다시’로 비울 수 있습니다.");
+}
+renderAll();
+})();
+</script>
+</body>
+</html>
