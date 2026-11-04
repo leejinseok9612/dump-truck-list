@@ -486,7 +486,7 @@ function parseJsonLoose(t){
   throw { code: "invalid_json" };
 }
 let lastCall = 0;
-async function gemini(prompt, blobs, signal){
+async function gemini(prompt, blobs, signal, opt = {}){
   const gap = 60000 / Math.max(1, RT.api.rpm) + 300;
   const parts = [{ text: prompt }];
   for (const b of blobs) parts.push({ inline_data: { mime_type: "image/jpeg", data: await blobToB64(b) } });
@@ -510,6 +510,7 @@ async function gemini(prompt, blobs, signal){
       return parseJsonLoose(txt);
     }
     const msg = (j.error && j.error.message) || "";
+    if (opt.noRetry && r.status !== 200) throw { code: r.status === 429 ? "rate_limited" : r.status === 404 ? "bad_model" : (r.status === 403 || /API key/i.test(msg)) ? "bad_key" : "http", message: msg, status: r.status };
     if (r.status === 429) {
       if (/per ?day|PerDay|daily/i.test(msg) || attempt === 3) throw { code: "rate_limited", daily: /day/i.test(msg) };
       const d = (j.error.details || []).find(x => x.retryDelay);
@@ -519,7 +520,7 @@ async function gemini(prompt, blobs, signal){
     if (r.status === 503 || r.status === 500) { await sleep(5000 * (attempt + 1), signal); continue; }
     if (r.status === 400 && /API key/i.test(msg)) throw { code: "bad_key" };
     if (r.status === 403) throw { code: "bad_key" };
-    if (r.status === 404 && RT.api.model !== "gemini-flash-latest") { RT.api.model = "gemini-flash-latest"; lastCall = 0; return gemini(prompt, blobs, signal); }
+    if (r.status === 404 && RT.api.model !== "gemini-flash-latest") { RT.api.model = "gemini-flash-latest"; lastCall = 0; return gemini(prompt, blobs, signal, opt); }
     if (r.status === 404) throw { code: "bad_model" };
     throw { code: "http", message: msg };
   }
@@ -1004,9 +1005,11 @@ $("#btnTest").onclick = async () => {
   if (!key) return admMsg("API 키를 넣어주세요.");
   admMsg("테스트 중…", true);
   const saved = RT.api; RT.api = { key, model, rpm: 1000 };
-  try { const r = await gemini('JSON으로만 답하라: {"ok":true}', [], null); const ok = r && (r.ok || (Array.isArray(r) && r[0] && r[0].ok)); admMsg(ok ? `정상 동작합니다 (${model}).` : "응답은 왔지만 형식이 이상합니다.", !!ok); }
-  catch(e) { admMsg(e.code === "bad_key" ? "키가 잘못되었습니다." : e.code === "bad_model" ? "모델 이름을 찾을 수 없습니다. ‘모델 목록 불러오기’를 눌러보세요." : e.code === "network" ? "Google 서버에 연결할 수 없습니다." : e.code === "rate_limited" ? "요청 한도 초과 — 잠시 후 다시." : "오류: " + (e.message || e.code)); }
-  finally { if (RT.api && RT.api.model !== model) $("#admModel").value = RT.api.model; RT.api = saved; lastCall = 0; }
+  const t0 = Date.now(), tick = setInterval(() => admMsg(`테스트 중… ${Math.round((Date.now() - t0) / 1000)}초`, true), 1000);
+  const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 60000);
+  try { const r = await gemini('JSON으로만 답하라: {"ok":true}', [], ctl.signal, { noRetry: true }); const ok = r && (r.ok || (Array.isArray(r) && r[0] && r[0].ok)); admMsg(ok ? `정상 동작합니다 (${model}).` : "응답은 왔지만 형식이 이상합니다.", !!ok); }
+  catch(e) { admMsg(e.code === "bad_key" ? "키가 잘못되었습니다." : e.code === "bad_model" ? "모델 이름을 찾을 수 없습니다. ‘모델 목록 불러오기’를 눌러보세요." : e.code === "network" ? "Google 서버에 연결할 수 없습니다." : e.code === "rate_limited" ? "Google이 요청 한도 초과라고 답했습니다: " + (e.message || "").slice(0, 200) : e.code === "cancelled" ? "60초 안에 응답이 없습니다. 회사/집 네트워크에서 Google 서버 연결을 확인해주세요." : "오류: " + (e.message || e.code)); }
+  finally { clearInterval(tick); clearTimeout(to); if (RT.api && RT.api.model !== model) $("#admModel").value = RT.api.model; RT.api = saved; lastCall = 0; }
 };
 $("#btnMake").onclick = async () => {
   const key = $("#admKey").value.trim(), model = $("#admModel").value.trim() || "gemini-flash-latest", rpm = +$("#admRpm").value || 5, code = $("#admCode").value.trim();
